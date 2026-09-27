@@ -21,10 +21,24 @@ export interface ClaimDocProps {
 /** The claim you send the brand — on screen and on paper (A4). */
 export function ClaimDoc({ business, number, date, from, to, remarks, brand, settings, lines, draft }: ClaimDocProps) {
   const s = summarize(lines, settings);
-  const b = s.billing;
-  const m = s.marginWorking;
   const monthName = (k: string) => (k.length === 7 ? new Date(k + "-01").toLocaleString("en-IN", { month: "short", year: "numeric" }) : k);
   const rows = [...lines].sort((a, x) => a.date.localeCompare(x.date)).map((l) => calcRow(l, settings));
+  // The working is on the EOSS sales, with fresh credit added line by line — the brand's sheet.
+  // A claim of fresh sales only is worked out the same way on its fresh sales.
+  const freshOnly = !s.disc.qty && !!s.fresh.qty;
+  const kind = freshOnly ? "Fresh" : "EOSS";
+  const w = freshOnly ? s.fresh : s.disc;
+  const b = { qty: w.qty, mrpValue: w.mrpValue, wsp: w.wspValue, gst: w.gstB2BValue, total: w.wspValue + w.gstB2BValue };
+  const not = w.realization - w.gstB2C;
+  const company = not - w.cashbackAmt - w.margin;
+  const m = { rv: w.realization, taxB2C: -w.gstB2C, not, cashback: -w.cashbackAmt, dealer: -w.margin, company, gst: w.gstB2BValue, netReceivable: company + w.gstB2BValue };
+  const byMonth = new Map<string, { qty: number; cn: number }>();
+  for (const r of rows.filter((r) => (freshOnly ? r.type === "FRESH" : r.type === "DISC"))) {
+    const k = r.date.slice(0, 7);
+    const t = byMonth.get(k) ?? { qty: 0, cn: 0 };
+    byMonth.set(k, { qty: t.qty + r.qty, cn: t.cn + r.cn });
+  }
+  const months = [...byMonth].sort(([a], [x]) => a.localeCompare(x));
 
   return (
     <article className="print-plain rounded-lg border bg-surface-100 px-10 py-10 text-foreground">
@@ -121,7 +135,7 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
 
       <section className="grid grid-cols-2 gap-10 border-b py-6">
         <div>
-          <p className="heading-meta text-foreground-lighter mb-1">Billing working — EOSS sales only · {inr(b.qty, 0)} of {inr(s.all.qty, 0)} pcs</p>
+          <p className="heading-meta text-foreground-lighter mb-1">Billing working — {kind} sales{b.qty !== s.all.qty ? ` only · ${inr(b.qty, 0)} of ${inr(s.all.qty, 0)} pcs` : ""}</p>
           <dl className="divide-y">
             <Figure label="Pieces sold" value={inr(b.qty, 0)} />
             <Figure label="MRP value" value={inr(b.mrpValue)} />
@@ -131,10 +145,10 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
           </dl>
         </div>
         <div>
-          <p className="heading-meta text-foreground-lighter mb-1">Margin working — EOSS sales only</p>
+          <p className="heading-meta text-foreground-lighter mb-1">Margin working — {kind} sales{b.qty !== s.all.qty ? " only" : ""}</p>
           <dl className="divide-y">
             <Figure label="Sale value (R.V.)" value={inr(m.rv)} />
-            {s.disc.flatDiscAmt ? <Figure label="(after flat discounts of)" value={inr(s.disc.flatDiscAmt)} muted /> : null}
+            {w.flatDiscAmt ? <Figure label="(after flat discounts of)" value={inr(w.flatDiscAmt)} muted /> : null}
             <Figure label="Less: GST in sale" value={inr(m.taxB2C)} muted />
             <Figure label="Net of tax" value={inr(m.not)} />
             {m.cashback ? <Figure label="Less: cashback to customers" value={inr(m.cashback)} muted /> : null}
@@ -148,8 +162,14 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
 
       <section className="border-b py-6">
         <dl className="divide-y">
-          <Figure label="Credit on EOSS sales (billed − payable)" value={inr(s.eossCn)} />
-          <Figure label="Credit on fresh sales" value={inr(s.freshCn)} />
+          {freshOnly ? (
+            <Figure label="Credit on fresh sales (billed − payable)" value={inr(s.freshCn)} />
+          ) : (
+            <>
+              <Figure label="Credit on EOSS sales (billed − payable)" value={inr(s.eossCn)} />
+              {s.fresh.qty ? <Figure label="Credit on fresh sales (sale by sale)" value={inr(s.freshCn)} /> : null}
+            </>
+          )}
         </dl>
         <div className="mt-3 flex items-end justify-between rounded-md bg-surface-200 px-4 py-4">
           <div>
@@ -175,10 +195,10 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
           </dl>
         </div>
         <div>
-          <p className="heading-meta text-foreground-lighter mb-1">Month-wise — EOSS</p>
+          <p className="heading-meta text-foreground-lighter mb-1">Month-wise — {kind}</p>
           <dl className="divide-y">
-            {s.months.length === 0 ? <Figure label="No EOSS sales" value="—" muted /> : null}
-            {s.months.map(({ month, t }) => (
+            {months.length === 0 ? <Figure label={`No ${kind} sales`} value="—" muted /> : null}
+            {months.map(([month, t]) => (
               <Figure key={month} label={`${monthName(month)} · ${inr(t.qty, 0)} pcs`} value={inr(t.cn)} />
             ))}
           </dl>

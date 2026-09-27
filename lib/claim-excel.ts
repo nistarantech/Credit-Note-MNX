@@ -32,8 +32,14 @@ export interface ClaimExcelInput {
 
 export function claimSheets({ business, number, date, from, to, remarks, brand, settings, lines, received }: ClaimExcelInput) {
   const s = summarize(lines, settings);
-  const b = s.billing;
-  const m = s.marginWorking;
+  // same as the printed claim: EOSS working, or fresh working for a claim of fresh sales only
+  const freshOnly = !s.disc.qty && !!s.fresh.qty;
+  const kind = freshOnly ? "Fresh" : "EOSS";
+  const w = freshOnly ? s.fresh : s.disc;
+  const b = { qty: w.qty, mrpValue: w.mrpValue, wsp: w.wspValue, gst: w.gstB2BValue, total: w.wspValue + w.gstB2BValue };
+  const notW = w.realization - w.gstB2C;
+  const companyW = notW - w.cashbackAmt - w.margin;
+  const m = { rv: w.realization, taxB2C: -w.gstB2C, not: notW, cashback: -w.cashbackAmt, dealer: -w.margin, company: companyW, gst: w.gstB2BValue, netReceivable: companyW + w.gstB2BValue };
   const rows: Cell[][] = [];
   const pair = (label: string, value: Cell) => rows.push([text(label), value]);
   const gap = () => rows.push([]);
@@ -81,7 +87,7 @@ export function claimSheets({ business, number, date, from, to, remarks, brand, 
   }
   gap();
 
-  rows.push([heading(`Billing working — EOSS sales only (${b.qty} of ${s.all.qty} pcs)`), null]);
+  rows.push([heading(`Billing working — ${kind} sales${b.qty !== s.all.qty ? ` only (${b.qty} of ${s.all.qty} pcs)` : ""}`), null]);
   pair("Pieces sold", num(b.qty));
   pair("MRP value", money(b.mrpValue));
   pair("WSP", money(b.wsp));
@@ -89,9 +95,9 @@ export function claimSheets({ business, number, date, from, to, remarks, brand, 
   rows.push([bold("Billed to us by the brand"), money(b.total, { fontWeight: "bold" })]);
   gap();
 
-  rows.push([heading("Margin working — EOSS sales only"), null]);
+  rows.push([heading(`Margin working — ${kind} sales${b.qty !== s.all.qty ? " only" : ""}`), null]);
   pair("Sale value (R.V.)", money(m.rv));
-  if (s.disc.flatDiscAmt) pair("(after flat discounts of)", money(s.disc.flatDiscAmt));
+  if (w.flatDiscAmt) pair("(after flat discounts of)", money(w.flatDiscAmt));
   pair("Less: GST in sale", money(m.taxB2C));
   pair("Net of tax", money(m.not));
   if (m.cashback) pair("Less: cashback to customers", money(m.cashback));
@@ -101,8 +107,11 @@ export function claimSheets({ business, number, date, from, to, remarks, brand, 
   rows.push([bold("Payable to brand"), money(m.netReceivable, { fontWeight: "bold" })]);
   gap();
 
-  pair("Credit on EOSS sales (billed − payable)", money(s.eossCn));
-  pair("Credit on fresh sales", money(s.freshCn));
+  if (freshOnly) pair("Credit on fresh sales (billed − payable)", money(s.freshCn));
+  else {
+    pair("Credit on EOSS sales (billed − payable)", money(s.eossCn));
+    if (s.fresh.qty) pair("Credit on fresh sales (sale by sale)", money(s.freshCn));
+  }
   rows.push([text("Credit note claimed", { fontWeight: "bold", backgroundColor: "#FFF4CC" }), money(s.totalCn, { fontWeight: "bold", backgroundColor: "#FFF4CC" })]);
   pair("In words", text(inWords(s.totalCn)));
   if (s.cnPctOfMrp !== null) pair(`CN % of MRP received × ${pc(settings.cnBasePct)}`, pct(s.cnPctOfMrp));
@@ -116,9 +125,16 @@ export function claimSheets({ business, number, date, from, to, remarks, brand, 
   pair("EOSS discount hit", pct(s.discHitPct));
   gap();
 
-  rows.push([heading("Month-wise — EOSS"), null]);
-  if (!s.months.length) pair("No EOSS sales", text("—"));
-  for (const { month, t } of s.months) pair(`${month} · ${t.qty} pcs`, money(t.cn));
+  rows.push([heading(`Month-wise — ${kind}`), null]);
+  const byMonth = new Map<string, { qty: number; cn: number }>();
+  for (const l of lines) {
+    const r = calcRow(l, settings);
+    if ((r.type === "FRESH") !== freshOnly) continue;
+    const t = byMonth.get(r.date.slice(0, 7)) ?? { qty: 0, cn: 0 };
+    byMonth.set(r.date.slice(0, 7), { qty: t.qty + r.qty, cn: t.cn + r.cn });
+  }
+  if (!byMonth.size) pair(`No ${kind} sales`, text("—"));
+  for (const [month, t] of [...byMonth].sort(([a], [x]) => a.localeCompare(x))) pair(`${month} · ${t.qty} pcs`, money(t.cn));
 
   if (received) {
     gap();
