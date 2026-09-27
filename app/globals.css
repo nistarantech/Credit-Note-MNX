@@ -1,0 +1,126 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+
+/* Supabase design system — tokens, utilities and variants vendored in
+   styles/supabase (see the README there); components in components/ui. */
+@import "../styles/supabase/global.css";
+@import "../styles/supabase/semantic.css";
+@import "../styles/supabase/compat.css";
+@import "../styles/supabase/theme-dark.css";
+@import "../styles/supabase/theme-light.css";
+@import "../styles/supabase/colors.css";
+@import "../styles/supabase/theme.css";
+@import "../styles/supabase/animations.css";
+@import "../styles/supabase/utilities.css";
+@import "../styles/supabase/hit-area.css";
+@import "../styles/supabase/typography.css";
+@import "../styles/supabase/variants.css";
+@import "../styles/supabase/base.css";
+
+:root {
+  --header-h: 3rem;
+  --rail-w: 3.5rem;
+  --menu-w: 14rem;
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  body {
+    @apply bg-studio text-foreground font-sans text-sm antialiased;
+    line-height: 1.5;
+  }
+
+  ::selection {
+    background: oklch(from var(--primary) l c h / 30%);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 99px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  /* number inputs: no spinners, figures line up */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* Shell offsets: the sidebar is open (menu-w) or an icon rail (rail-w). */
+@layer components {
+  .app-shell {
+    --shell-offset: var(--menu-w);
+  }
+  .app-shell[data-menu="closed"] {
+    --shell-offset: var(--rail-w);
+  }
+  @media (max-width: 1023px) {
+    .app-shell,
+    .app-shell[data-menu="closed"] {
+      --shell-offset: 0px;
+    }
+  }
+  .app-content {
+    margin-left: var(--shell-offset);
+    padding-top: var(--header-h);
+    min-height: 100dvh;
+    transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  .app-chrome,
+  .no-print {
+    display: none !important;
+  }
+  .app-content {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body {
+    background: white !important;
+  }
+  .print-plain {
+    border: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    color: black !important;
+  }
+}
+
+/* Desktop app (Electron, macOS): the top bar is the window's title bar —
+   draggable, with room on the left for the traffic-light buttons. */
+html[data-desktop="darwin"] header.app-chrome {
+  padding-left: 80px;
+  -webkit-app-region: drag;
+}
+html[data-desktop] header.app-chrome :is(a, button, input) {
+  -webkit-app-region: no-drag;
+}

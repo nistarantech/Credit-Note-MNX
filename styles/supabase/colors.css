@@ -1,0 +1,70 @@
+/*
+ * Radix/scale/brand --color-* CSS variables, with per-theme values inlined.
+ *
+ * Hand-edited. Source palette: @radix-ui/colors (light/dark hue scales) plus a
+ * curated brand scale. The Supabase `scale` namespace maps to slate in light
+ * and gray in dark (scale-1100 dark is the hard-coded #bbbbbb override that
+ * predates the migration).
+ *
+ * Brand steps 200..600 stay as hsl(var(--brand-{step})) because those tokens
+ * are semantic — light/dark values live in the theme files (light.css /
+ * dark.css), not here.
+ *
+ * theme.css references these vars from its @theme inline block so Tailwind v4
+ * generates the bg-/text-/border-/ring- utilities.
+ */
+
+:root {
+  --color-scale-100: hsl(206, 30%, 98.8%);
+  --color-scale-200: hsl(210, 16.7%, 97.6%);
+  --color-scale-300: hsl(209, 13.3%, 95.3%);
+  --color-scale-400: hsl(209, 12.2%, 93.2%);
+  --color-scale-500: hsl(208, 11.7%, 91.1%);
+  --color-scale-600: hsl(208, 11.3%, 88.9%);
+  --color-scale-700: hsl(207, 11.1%, 85.9%);
+  --color-scale-800: hsl(205, 10.7%, 78%);
+  --color-scale-900: hsl(206, 6%, 56.1%);
+  --color-scale-1000: hsl(206, 5.8%, 52.3%);
+  --color-scale-1100: hsl(206, 6%, 43.5%);
+  --color-scale-1200: hsl(206, 24%, 9%);
+  --color-brand-100: hsla(153, 80%, 99%, 1);
+  --color-brand-200: hsl(var(--brand-200));
+  --color-brand-300: hsl(var(--brand-300));
+  --color-brand-400: hsl(var(--brand-400));
+  --color-brand-500: hsl(var(--brand-500));
+  --color-brand-600: hsl(var(--brand-600));
+  --color-brand-700: hsla(149, 43%, 69%, 1);
+  --color-brand-800: hsla(154, 55%, 45%, 1);
+  --color-brand-900: hsla(153, 60%, 53%, 1);
+  --color-brand-1000: hsla(153, 50%, 50%, 1);
+  --color-brand-1100: hsla(153, 50%, 34%, 1);
+  --color-brand-1200: hsla(153, 40%, 12%, 1);
+}
+
+.dark,
+[data-theme*='dark'] {
+  --color-scale-100: hsl(0, 0%, 8.5%);
+  --color-scale-200: hsl(0, 0%, 11%);
+  --color-scale-300: hsl(0, 0%, 13.6%);
+  --color-scale-400: hsl(0, 0%, 15.8%);
+  --color-scale-500: hsl(0, 0%, 17.9%);
+  --color-scale-600: hsl(0, 0%, 20.5%);
+  --color-scale-700: hsl(0, 0%, 24.3%);
+  --color-scale-800: hsl(0, 0%, 31.2%);
+  --color-scale-900: hsl(0, 0%, 43.9%);
+  --color-scale-1000: hsl(0, 0%, 49.4%);
+  --color-scale-1100: #bbbbbb;
+  --color-scale-1200: hsl(0, 0%, 93%);
+  --color-brand-100: hsla(153, 75%, 6%, 1);
+  --color-brand-200: hsl(var(--brand-200));
+  --color-brand-300: hsl(var(--brand-300));
+  --color-brand-400: hsl(var(--brand-400));
+  --color-brand-500: hsl(var(--brand-500));
+  --color-brand-600: hsl(var(--brand-600));
+  --color-brand-700: hsla(154, 62%, 22%, 1);
+  --color-brand-800: hsla(153, 60%, 28%, 1);
+  --color-brand-900: hsla(153, 60%, 53%, 1);
+  --color-brand-1000: hsla(153, 60%, 70%, 1);
+  --color-brand-1100: hsla(153, 60%, 50%, 1);
+  --color-brand-1200: hsla(153, 60%, 95%, 1);
+}

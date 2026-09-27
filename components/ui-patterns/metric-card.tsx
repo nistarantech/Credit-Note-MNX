@@ -1,0 +1,216 @@
+'use client'
+
+import { ChevronRight, HelpCircle } from 'lucide-react'
+import Link from 'next/link'
+import * as React from 'react'
+import { useContext } from 'react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/cn'
+
+interface MetricCardContextValue {
+  isLoading?: boolean
+  isDisabled?: boolean
+}
+
+const MetricCardContext = React.createContext<MetricCardContextValue>({
+  isLoading: false,
+  isDisabled: false,
+})
+
+const useMetricCard = () => {
+  return useContext(MetricCardContext)
+}
+
+interface MetricCardProps extends React.HTMLAttributes<HTMLDivElement> {
+  isLoading?: boolean
+  isDisabled?: boolean
+}
+
+const MetricCard = React.forwardRef<HTMLDivElement, MetricCardProps>(
+  ({ isLoading = false, isDisabled = false, className, children, ...props }, ref) => {
+    return (
+      <Card
+        ref={ref}
+        className={cn('group-hover:bg-surface-200 transition-colors', className)}
+        {...props}
+      >
+        <MetricCardContext.Provider value={{ isLoading, isDisabled }}>
+          {children}
+        </MetricCardContext.Provider>
+      </Card>
+    )
+  }
+)
+MetricCard.displayName = 'MetricCard'
+
+interface MetricCardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+  /**
+   * Renders the chevron affordance as a link. Omit the href (while keeping
+   * linkTooltip) when the card is already wrapped in a link — nesting an
+   * anchor within an anchor is invalid HTML, and clicks on the chevron will
+   * fall through to the wrapping link instead.
+   */
+  href?: string
+  children: React.ReactNode
+  linkTooltip?: string
+}
+
+const MetricCardHeader = React.forwardRef<HTMLDivElement, MetricCardHeaderProps>(
+  ({ className, href, children, linkTooltip, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          'p-card flex flex-row items-center justify-between gap-2 space-y-0 pb-0 border-b-0 relative',
+          className
+        )}
+        {...props}
+      >
+        <div className="flex flex-row items-center gap-2">{children}</div>
+        {href || linkTooltip ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="text"
+                size="tiny"
+                className="px-1 text-foreground-lighter group-hover:text-foreground absolute right-3 transition-colors"
+                asChild
+              >
+                {href ? (
+                  <Link href={href}>
+                    <ChevronRight aria-disabled={true} size={14} strokeWidth={1.5} />
+                    <span className="sr-only">More information</span>
+                  </Link>
+                ) : (
+                  <span>
+                    <ChevronRight aria-disabled={true} size={14} strokeWidth={1.5} />
+                    <span className="sr-only">More information</span>
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            {linkTooltip ? <TooltipContent>{linkTooltip}</TooltipContent> : null}
+          </Tooltip>
+        ) : null}
+      </div>
+    )
+  }
+)
+MetricCardHeader.displayName = 'MetricCardHeader'
+
+interface MetricCardContentProps extends React.HTMLAttributes<HTMLDivElement> {
+  orientation?: 'horizontal' | 'vertical'
+}
+
+const MetricCardContent = React.forwardRef<HTMLDivElement, MetricCardContentProps>(
+  ({ className, orientation = 'vertical', ...props }, ref) => (
+    <CardContent
+      ref={ref}
+      className={cn(
+        'p-card pt-0 flex-1 flex h-full items-start gap-1 overflow-hidden border-b-0',
+        orientation === 'horizontal' ? 'flex-row' : 'flex-col ',
+        className
+      )}
+      {...props}
+    />
+  )
+)
+MetricCardContent.displayName = 'MetricCardContent'
+
+const MetricCardIcon = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('text-foreground-light', className)} {...props} />
+  )
+)
+MetricCardIcon.displayName = 'MetricCardIcon'
+
+interface MetricCardLabelProps extends React.HTMLAttributes<HTMLDivElement> {
+  tooltip?: React.ReactNode
+  children: React.ReactNode
+}
+
+const MetricCardLabel = React.forwardRef<HTMLDivElement, MetricCardLabelProps>(
+  ({ className, tooltip, children, ...props }, ref) => {
+    return (
+      <CardTitle
+        ref={ref}
+        className={cn('flex items-center gap-2 text-foreground-light', className)}
+        {...props}
+      >
+        <span>{children}</span>
+        {tooltip && (
+          <Tooltip>
+            <TooltipTrigger aria-label="More information">
+              <HelpCircle size={14} strokeWidth={1.5} />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">{tooltip}</TooltipContent>
+          </Tooltip>
+        )}
+      </CardTitle>
+    )
+  }
+)
+MetricCardLabel.displayName = 'MetricCardLabel'
+
+const MetricCardValue = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => {
+    const { isLoading } = useMetricCard()
+
+    if (isLoading) {
+      return <Skeleton className="w-32 h-7" />
+    }
+
+    return (
+      <span ref={ref} className={cn('font-normal text-xl tabular-nums', className)} {...props} />
+    )
+  }
+)
+
+MetricCardValue.displayName = 'MetricCardValue'
+
+interface MetricCardDifferentialProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: 'positive' | 'negative' | 'default'
+}
+
+const MetricCardDifferential = React.forwardRef<HTMLDivElement, MetricCardDifferentialProps>(
+  ({ className, variant = 'default', ...props }, ref) => {
+    const { isLoading } = useMetricCard()
+
+    if (isLoading) {
+      return <Skeleton className="w-16 h-5" />
+    }
+
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          variant === 'positive'
+            ? 'text-brand'
+            : variant === 'negative'
+              ? 'text-destructive'
+              : 'text-foreground-light',
+          'tabular-nums text-sm',
+          className
+        )}
+        {...props}
+      />
+    )
+  }
+)
+
+MetricCardDifferential.displayName = 'MetricCardDifferential'
+
+
+export {
+  MetricCard,
+  MetricCardHeader,
+  MetricCardIcon,
+  MetricCardLabel,
+  MetricCardContent,
+  MetricCardValue,
+  MetricCardDifferential,
+  useMetricCard,
+}
