@@ -19,7 +19,7 @@ const SALE_HEADERS: [RegExp, SaleField][] = [
   // older POS exports keep the barcode in "Field 2"
   [/barcode|article|^field2$/, "barcode"],
   [/^division/, "division"],
-  [/^department|^itemname$|^productname$|^group$|^product$/, "department"],
+  [/^department|^itemname$|^productname$|^itemgroupname$|^group$|^product$/, "department"],
   [/^ageing|^season/, "ageing"],
   [/^disc%\(m\)/, "discM"],
   [/^disc%\(p\)/, "discP"],

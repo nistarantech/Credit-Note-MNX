@@ -122,8 +122,21 @@ export function matchRates(sales: Pick<Line, "id" | "barcode" | "department" | "
       if (d && e.mrp) byDesign.set(d, [...(byDesign.get(d) ?? []), e.rate / e.mrp]);
     }
   }
+  const near = (k: string) => {
+    if (groups.has(k)) return groups.get(k);
+    // the same MRP to within ₹1: bills round a revised MRP (3,475.73 → 3,475)
+    const [kind, ...rest] = k.split("|");
+    const mrpAt = kind === "m" ? 0 : 1;
+    const want = +rest[mrpAt];
+    for (const [gk, g] of groups) {
+      const [gkind, ...grest] = gk.split("|");
+      if (gkind !== kind || Math.abs(+grest[mrpAt] - want) > 1) continue;
+      if (grest.every((v, i) => i === mrpAt || v === rest[i])) return g;
+    }
+    return undefined;
+  };
   const fromGroup = (k: string) => {
-    const g = groups.get(k);
+    const g = near(k);
     if (!g?.length) return null;
     const rate = median(g.map((e) => e.rate));
     // one MRP bought at clearly different rates (different styles): not specific enough
@@ -133,9 +146,8 @@ export function matchRates(sales: Pick<Line, "id" | "barcode" | "department" | "
   return sales.map((s) => {
     const exact = s.barcode ? byBarcode.get(s.barcode) : undefined;
     if (exact) {
-      // the stock list's MRP may predate a revised MRP: keep the rate's share of MRP
-      const rate = exact.mrp && Math.abs(exact.mrp - s.mrp) > 1 ? (exact.rate / exact.mrp) * s.mrp : exact.rate;
-      return { id: s.id, how: "barcode", wsp: +rate.toFixed(2), wspSource: `${HOW_LABEL.barcode} · ${exact.source}` };
+      // what was paid for this very piece — a later MRP revision doesn't change it
+      return { id: s.id, how: "barcode", wsp: +exact.rate.toFixed(2), wspSource: `${HOW_LABEL.barcode} · ${exact.source}` };
     }
     const item = normItem(s.department);
     const steps: [RateHow, string][] = [
