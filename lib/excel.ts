@@ -7,7 +7,7 @@ import type { Purchase } from "./store";
 export type Cell = string | number | boolean | Date | null | undefined;
 export type Kind = "sales" | "purchases";
 
-type SaleField = "date" | "billNo" | "barcode" | "division" | "department" | "ageing" | "discM" | "discP" | "disc" | "type" | "mrp" | "qty" | "wsp" | "gstB2B" | "flatDisc" | "cashback" | "saleAmt";
+type SaleField = "date" | "billNo" | "barcode" | "division" | "department" | "ageing" | "discM" | "discP" | "disc" | "type" | "mrp" | "qty" | "wsp" | "gstB2B" | "flatDisc" | "cashback" | "saleAmt" | "saleRate";
 type BuyField = "date" | "invoiceNo" | "barcode" | "division" | "department" | "category" | "season" | "rate" | "mrp" | "qty" | "gross" | "tax" | "net";
 
 const key = (h: Cell) => String(h ?? "").toLowerCase().replace(/[^a-z0-9%()-]/g, "");
@@ -15,24 +15,27 @@ const key = (h: Cell) => String(h ?? "").toLowerCase().replace(/[^a-z0-9%()-]/g,
 // Header text (normalised) → field. First match per field wins.
 const SALE_HEADERS: [RegExp, SaleField][] = [
   [/^billdate|^date$|^saledate|^voucherdate/, "date"],
-  [/^billno|^bill$|^invoiceno|^voucherno|^voucherwithprefix|^voucher$/, "billNo"],
-  [/barcode|article/, "barcode"],
+  [/^billno|^bill$|^invoiceno|^voucherno|^voucherwithprefix|^voucher$|^vchnumber|^vchno/, "billNo"],
+  // older POS exports keep the barcode in "Field 2"
+  [/barcode|article|^field2$/, "barcode"],
   [/^division/, "division"],
-  [/^department|^itemname$|^productname$/, "department"],
+  [/^department|^itemname$|^productname$|^group$|^product$/, "department"],
   [/^ageing|^season/, "ageing"],
   [/^disc%\(m\)/, "discM"],
   [/^disc%\(p\)/, "discP"],
-  [/^disc%?$|^discount%?$/, "disc"],
+  [/^disc%?$|^dis$|^discount%?$/, "disc"],
   [/^slab$|^type$|^saletype$/, "type"],
   [/^mrp$/, "mrp"],
-  [/^qty$|^quantity$/, "qty"],
+  [/^qty$|^quantity$|^salesqty$|^saleqty$|^soldqty$/, "qty"],
   [/^wsp$/, "wsp"],
   [/^gst\(b-b\)$/, "gstB2B"],
   // ₹ amounts. Not "Disc (P)" / "Disc (M)" — those are the % discount worked out in rupees.
   [/^flatdisc|^flatdiscount|^discamt$|^discountamount$|^discount\(rs|^extradisc|^totaldisc/, "flatDisc"],
   [/^cashback/, "cashback"],
   // what the customer paid for the line, in POS sale reports (Sale amt / Net Amt / amt)
-  [/^saleamt|^saleamount|^saleval|^netamt$|^netamount$|^amt$|^amount$/, "saleAmt"],
+  [/^saleamt|^saleamount|^salesamt|^salesamount|^saleval|^netamt$|^netamount$|^amt$|^amount$/, "saleAmt"],
+  // paid per piece, when there is no line amount ("Sale Rate"; not "New Sale Rate", which is a price)
+  [/^salerate$|^netrate$/, "saleRate"],
 ];
 
 const BUY_HEADERS: [RegExp, BuyField][] = [
@@ -106,11 +109,18 @@ export function readSheet(sheet: string, rows: Cell[][]): SheetFound | null {
   return null;
 }
 
-function salesFrom(sheet: string, rows: Cell[][], h: number, map: Map<SaleField, number>): SheetFound {
+function salesFrom(sheet: string, rows: Cell[][], h: number, first: Map<SaleField, number>): SheetFound {
+  let map = first;
   const get = (r: Cell[], f: SaleField) => (map.has(f) ? r[map.get(f)!] : undefined);
   const sales: Line[] = [];
   let skipped = 0;
   for (const r of rows.slice(h + 1)) {
+    // Another table pasted further down the sheet, with its own header row: read on with its columns.
+    const again = mapHeader(r, SALE_HEADERS);
+    if (again.has("mrp") && again.has("qty") && again.has("date")) {
+      map = again;
+      continue;
+    }
     const qty = num(get(r, "qty"));
     // POS reports put a return as −1 qty at −MRP: keep the MRP per piece positive.
     const mrpIn = num(get(r, "mrp"));
@@ -120,10 +130,16 @@ function salesFrom(sheet: string, rows: Cell[][], h: number, map: Map<SaleField,
       if (r.some((c) => c !== null && c !== undefined && c !== "")) skipped++;
       continue;
     }
-    const discRaw = [get(r, "discM"), get(r, "discP"), get(r, "disc")].map(pct).find((x) => !isNaN(x));
-    // No discount % column but the amount paid is there: the discount is what was knocked off the MRP.
-    const paid = num(get(r, "saleAmt"));
-    const fromPaid = discRaw === undefined && !isNaN(paid) ? Math.min(1, Math.max(0, 1 - Math.abs(paid) / (mrp * Math.abs(qty)))) : undefined;
+    // When the amount the customer paid is there (POS reports: Net Amt / Sale Amt), the discount
+    // is what was knocked off the MRP — their "Disc" column is sometimes %, sometimes ₹.
+    const rate = num(get(r, "saleRate"));
+    const paid = !isNaN(num(get(r, "saleAmt"))) ? num(get(r, "saleAmt")) : rate * Math.abs(qty);
+    const fromPaid = !isNaN(paid) ? Math.min(1, 1 - Math.abs(paid) / (mrp * Math.abs(qty))) : undefined; // below 0 when sold above MRP
+    const asPct = (v: Cell) => {
+      const p = pct(v);
+      return p > 1 ? num(v) / (mrp * Math.abs(qty)) : p; // "Disc" of 1,599 on a ₹3,999 piece is rupees, not 1,599%
+    };
+    const discRaw = fromPaid !== undefined ? undefined : [get(r, "discM"), get(r, "discP"), get(r, "disc")].map(asPct).find((x) => !isNaN(x));
     const typeCell = str(get(r, "type"));
     const disc = +(discRaw ?? fromPaid ?? 0).toFixed(6);
     // no Slab column: a real markdown is EOSS, a small one (e.g. 6.25%) is a fresh-sale scheme
