@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS sales (
   margin_override   REAL,                    -- custom margin for this sale; NULL = the brand's terms
   gst_rate_override REAL,                    -- GST rate in the sale price; NULL = rate history
   purchase_date     TEXT,                    -- brand's invoice date (picks the B-B GST rate)
+  wsp_source        TEXT,                    -- where the WSP came from; NULL wsp = estimated from MRP x factor
   import_id     TEXT REFERENCES imports(id) ON DELETE SET NULL,
   claim_id      TEXT REFERENCES claims(id) ON DELETE SET NULL,
   mrp_value     REAL NOT NULL,
@@ -218,7 +219,7 @@ const saleRow = (s) => ({
   id: s.id, brand_id: s.brandId, month: s.date.slice(0, 7), bill_date: s.date, bill_no: s.billNo, barcode: s.barcode,
   division: s.division, department: s.department, ageing: s.ageing, sale_type: s.type, disc: s.disc, mrp: s.mrp, qty: s.qty,
   wsp: s.wsp, gst_b2b: s.gstB2B, flat_disc: s.flatDisc ?? null, cashback: s.cashback ?? null, margin_override: s.marginOverride ?? null, gst_rate_override: s.gstRateOverride ?? null,
-  purchase_date: s.purchaseDate ?? null, import_id: s.importId ?? null, claim_id: s.claimId,
+  purchase_date: s.purchaseDate ?? null, wsp_source: s.wspSource ?? null, import_id: s.importId ?? null, claim_id: s.claimId,
   mrp_value: s.calc.mrpValue, realization: s.calc.realization, gst_rate: s.calc.gstRate, gst_b2c: s.calc.gstB2C,
   margin_pct: s.calc.marginPct, margin: s.calc.margin, net_payable: s.calc.netPayable, wsp_value: s.calc.wspValue,
   gst_b2b_value: s.calc.gstB2BValue, cn: s.calc.cn,
@@ -227,7 +228,7 @@ const saleObj = (r) => ({
   id: r.id, brandId: r.brand_id, date: r.bill_date, billNo: r.bill_no, barcode: r.barcode, division: r.division,
   department: r.department, ageing: r.ageing, type: r.sale_type, disc: r.disc, mrp: r.mrp, qty: r.qty, wsp: r.wsp,
   gstB2B: r.gst_b2b, flatDisc: r.flat_disc, cashback: r.cashback, marginOverride: r.margin_override, gstRateOverride: r.gst_rate_override,
-  purchaseDate: r.purchase_date, importId: r.import_id, claimId: r.claim_id,
+  purchaseDate: r.purchase_date, wspSource: r.wsp_source ?? null, importId: r.import_id, claimId: r.claim_id,
 });
 
 const purchaseRow = (p) => ({
@@ -288,6 +289,7 @@ const ADDED_COLUMNS = [
   ["sales", "purchase_date", "TEXT"],
   ["sales", "flat_disc", "REAL"],
   ["sales", "cashback", "REAL"],
+  ["sales", "wsp_source", "TEXT"],
 ];
 
 function migrate(db) {

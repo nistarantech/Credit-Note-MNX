@@ -158,7 +158,7 @@ function salesFrom(sheet: string, rows: Cell[][], h: number, first: Map<SaleFiel
     sales.push({
       id: uid(), date: d, billNo: str(get(r, "billNo")), barcode: str(get(r, "barcode")),
       division: str(get(r, "division")), department: str(get(r, "department")), ageing: str(get(r, "ageing")),
-      type, disc, mrp, qty, wsp, gstB2B,
+      type, disc, mrp, qty, wsp, gstB2B, wspSource: wsp === null ? null : `Sales sheet ${sheet}`,
       flatDisc: flat > 0 && fromPaid === undefined ? flat : null, // already inside the % worked out from the amount paid
       cashback: cash > 0 ? cash : null,
     });
@@ -204,18 +204,24 @@ export function readPaste(text: string): SheetFound | null {
  * sale without an invoice rate takes the invoice's when it differs from
  * MRP × WSP factor. The earliest invoice for a barcode is used.
  */
-export function linkPurchases(sales: Line[], purchases: { barcode: string; rate: number; date: string }[], s: Settings): Line[] {
-  const first = new Map<string, { rate: number; date: string }>();
+export function linkPurchases(sales: Line[], purchases: { barcode: string; rate: number; date: string; invoiceNo?: string }[], _s?: Settings): Line[] {
+  const first = new Map<string, { rate: number; date: string; invoiceNo?: string }>();
   for (const p of purchases) {
     if (!p.barcode) continue;
     const seen = first.get(p.barcode);
-    if (!seen || p.date < seen.date) first.set(p.barcode, { rate: p.rate, date: p.date });
+    if (!seen || p.date < seen.date) first.set(p.barcode, { rate: p.rate, date: p.date, invoiceNo: p.invoiceNo });
   }
   return sales.map((l) => {
     const inv = first.get(l.barcode);
     if (!inv) return l;
-    const wsp = l.wsp ?? (Math.abs(inv.rate - l.mrp * s.wspFactor) > 0.01 ? inv.rate : null);
-    return { ...l, wsp, purchaseDate: l.purchaseDate ?? inv.date };
+    // the invoice rate is the actual WSP, even when it happens to equal MRP × factor
+    const fromInvoice = l.wsp === null || l.wsp === undefined;
+    return {
+      ...l,
+      wsp: fromInvoice ? inv.rate : l.wsp,
+      wspSource: fromInvoice ? `Invoice ${inv.invoiceNo ?? ""} ${inv.date}`.replace(/\s+/g, " ").trim() : l.wspSource,
+      purchaseDate: l.purchaseDate ?? inv.date,
+    };
   });
 }
 

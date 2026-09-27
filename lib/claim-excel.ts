@@ -126,21 +126,22 @@ export function claimSheets({ business, number, date, from, to, remarks, brand, 
   const calc = [...lines].sort((a, x) => a.date.localeCompare(x.date)).map((l) => calcRow(l, settings));
   const head = [
     "Date", "Bill", "Barcode", "Division", "Department", "Type", "Disc %", "MRP", "Qty", "MRP value", "Sale value",
-    "GST rate", "GST in sale", "Margin %", "Margin", "Net payable", "WSP value", "GST (B-B)", "Credit",
+    "GST rate", "GST in sale", "Margin %", "Margin", "Net payable", "WSP / pc", "WSP value", "WSP source", "GST (B-B)", "Credit",
   ].map((h) => text(h, { fontWeight: "bold", backgroundColor: "#E8EEF4" }));
   const sales: Cell[][] = [head];
   for (const r of calc) {
     sales.push([
       day(r.date), text(r.billNo), text(r.barcode), text(r.division), text(r.department), text(r.type === "DISC" ? "EOSS" : "Fresh"),
       pct(r.disc), money(r.mrp), num(r.qty), money(r.mrpValue), money(r.realization), pct(r.gstRate), money(r.gstB2C),
-      pct(r.marginPct), money(r.margin), money(r.netPayable), money(r.wspValue), money(r.gstB2BValue), money(r.cn),
+      pct(r.marginPct), money(r.margin), money(r.netPayable), money(r.qty ? r.wspValue / r.qty : 0), money(r.wspValue),
+      text(r.wspEstimated ? `Estimated: MRP × ${settings.wspFactor}` : r.wspSource || "Entered with the sale"), money(r.gstB2BValue), money(r.cn),
     ]);
   }
   const t = s.all;
   const tb = (v: number) => money(v, { fontWeight: "bold" });
   sales.push([
     bold("Total"), null, null, null, null, null, null, null, num(t.qty), tb(t.mrpValue), tb(t.realization), null, tb(t.gstB2C),
-    null, tb(t.margin), tb(t.netPayable), tb(t.wspValue), tb(t.gstB2BValue), tb(t.cn),
+    null, tb(t.margin), tb(t.netPayable), null, tb(t.wspValue), null, tb(t.gstB2BValue), tb(t.cn),
   ]);
 
   return [
@@ -149,7 +150,7 @@ export function claimSheets({ business, number, date, from, to, remarks, brand, 
       data: sales,
       sheet: "Sales",
       stickyRowsCount: 1,
-      columns: [12, 10, 16, 12, 16, 8, 8, 10, 6, 12, 12, 9, 12, 9, 12, 12, 12, 11, 12].map((width) => ({ width })),
+      columns: [12, 10, 16, 12, 16, 8, 8, 10, 6, 12, 12, 9, 12, 9, 12, 12, 10, 12, 40, 11, 12].map((width) => ({ width })),
     },
   ];
 }

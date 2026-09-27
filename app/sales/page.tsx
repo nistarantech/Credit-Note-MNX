@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Copy, FileSpreadsheet, MoreHorizontal, Pencil, Plus, ReceiptText, Search, Trash2, X } from "lucide-react";
+import { Copy, FileSpreadsheet, IndianRupee, MoreHorizontal, Pencil, Plus, ReceiptText, Search, Trash2, X } from "lucide-react";
 import { GST_RATES, calcRow, inr, summarize, uid, type Row } from "@/lib/calc";
 import { monthLabel, monthOf, salesMonths } from "@/lib/month";
 import { calcSettings, useStore, type Sale } from "@/lib/store";
@@ -26,6 +26,8 @@ import { FormField, NumberInput, fmtDate } from "@/components/app/fields";
 import { MARGIN_PRESETS } from "@/components/app/margin-select";
 import { Metric } from "@/components/app/metric";
 import { ImportDialog } from "@/components/app/import-dialog";
+import { RatesDialog } from "@/components/app/rates-dialog";
+import { Admonition } from "@/components/ui-patterns/admonition";
 import { NoBrand } from "@/components/app/no-brand";
 import { Page } from "@/components/app/page";
 import { SaleSheet } from "@/components/app/sale-sheet";
@@ -38,6 +40,8 @@ export default function SalesPage() {
   const { data, brand, saveSale, deleteSales, updateSales } = useStore();
   const [sheet, setSheet] = useState<{ open: boolean; sale: Sale | null }>({ open: false, sale: null });
   const [importing, setImporting] = useState(false);
+  const [rating, setRating] = useState(false);
+  const [wspF, setWspF] = useState("all"); // all | actual | est
   const [type, setType] = useState("all");
   const [status, setStatus] = useState("open");
   const [margin, setMargin] = useState("all"); // all | brand | custom | <rate>
@@ -79,7 +83,8 @@ export default function SalesPage() {
     .filter(({ row }) => gst === "all" || key(row.gstRate) === gst)
     .filter(({ row }) =>
       offer === "all" ? true : offer === "flat" ? row.flatDiscAmt !== 0 : offer === "cashback" ? row.cashbackAmt !== 0 : !row.flatDiscAmt && !row.cashbackAmt,
-    );
+    )
+    .filter(({ row }) => wspF === "all" || (wspF === "est") === row.wspEstimated);
 
   if (!brand || !stats) {
     return (
@@ -94,7 +99,8 @@ export default function SalesPage() {
   const gstRates = [...new Set(base.map(({ row }) => key(row.gstRate)))].sort((a, b) => +a - +b);
 
   const claimNo = (id: string | null) => data.claims.find((n) => n.id === id)?.number ?? "Claimed";
-  const tot = rows.reduce((a, { row }) => ({ qty: a.qty + row.qty, sale: a.sale + row.realization, margin: a.margin + row.margin, cn: a.cn + row.cn }), { qty: 0, sale: 0, margin: 0, cn: 0 });
+  const tot = rows.reduce((a, { row }) => ({ qty: a.qty + row.qty, sale: a.sale + row.realization, wsp: a.wsp + row.wspValue, margin: a.margin + row.margin, cn: a.cn + row.cn }), { qty: 0, sale: 0, wsp: 0, margin: 0, cn: 0 });
+  const estimated = stats.open.filter((s) => s.wsp === null || s.wsp === undefined).length;
   const p = stats.pending;
   const months = salesMonths(stats.sales);
   // With a month picked, the tiles describe that month (claimed or not).
@@ -117,6 +123,7 @@ export default function SalesPage() {
       size="large"
       actions={
         <>
+          <Button variant="default" icon={<IndianRupee size={14} strokeWidth={1.5} />} onClick={() => setRating(true)}>Purchase rates</Button>
           <Button variant="default" icon={<FileSpreadsheet size={14} strokeWidth={1.5} />} onClick={() => setImporting(true)}>Import from Excel</Button>
           <Button variant="primary" icon={<Plus size={14} strokeWidth={1.5} />} onClick={() => setSheet({ open: true, sale: null })}>New sale</Button>
         </>
@@ -137,6 +144,19 @@ export default function SalesPage() {
           <Metric label="CN to claim" value={`₹ ${inr(p.totalCn)}`} tooltip="Credit note you can claim from the brand for unclaimed sales" strong />
         </div>
       )}
+
+      {estimated ? (
+        <Admonition
+          type="warning"
+          title={`${estimated} unclaimed sales have no actual WSP`}
+          description={`Their purchase rate is only estimated as MRP × ${settings.wspFactor}, so their credit note is too. Load ${brand.name}'s purchase register, invoices or a stock report with Pur. Rate to set the real rate.`}
+        >
+          <div className="mt-2 flex gap-2">
+            <Button variant="default" size="tiny" onClick={() => setRating(true)}>Load purchase rates</Button>
+            <Button variant="text" size="tiny" onClick={() => { setWspF("est"); setStatus("open"); }}>Show them</Button>
+          </div>
+        </Admonition>
+      ) : null}
 
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b px-(--card-padding-x) py-3">
@@ -180,6 +200,12 @@ export default function SalesPage() {
             <SelectItem value="flat">Flat discount ({count((r) => r.flatDiscAmt !== 0)})</SelectItem>
             <SelectItem value="cashback">Cashback ({count((r) => r.cashbackAmt !== 0)})</SelectItem>
             <SelectItem value="none">Neither ({count((r) => !r.flatDiscAmt && !r.cashbackAmt)})</SelectItem>
+          </Filter>
+          <Filter value={wspF} onChange={setWspF} width="w-44">
+            <SelectItem value="all">Any WSP</SelectItem>
+            <SelectSeparator />
+            <SelectItem value="actual">Actual WSP ({count((r) => !r.wspEstimated)})</SelectItem>
+            <SelectItem value="est">Estimated WSP ({count((r) => r.wspEstimated)})</SelectItem>
           </Filter>
           <span className="ml-auto text-xs text-foreground-lighter">{rows.length} sales</span>
         </div>
@@ -247,6 +273,7 @@ export default function SalesPage() {
                 <TableHead className="text-right">MRP × qty</TableHead>
                 <TableHead className="text-right">Disc.</TableHead>
                 <TableHead className="text-right">Sale value</TableHead>
+                <TableHead className="text-right">WSP / pc</TableHead>
                 <TableHead className="text-right">GST</TableHead>
                 <TableHead className="text-right">Margin</TableHead>
                 <TableHead className="text-right">CN</TableHead>
@@ -281,6 +308,13 @@ export default function SalesPage() {
                     {row.cashbackAmt ? <div className="text-xs text-foreground-lighter">cashback ₹ {inr(row.cashbackAmt, 0)}</div> : null}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{inr(row.realization)}</TableCell>
+                  <TableCell className="text-right tabular-nums whitespace-nowrap" title={row.wspEstimated ? `Estimated: MRP × ${settings.wspFactor}` : sale.wspSource ?? "Entered with the sale"}>
+                    <div className={row.wspEstimated ? "text-foreground-lighter" : "text-foreground"}>
+                      {row.wspEstimated ? <Badge variant="warning" className="mr-1.5">est.</Badge> : null}
+                      {inr(row.qty ? row.wspValue / row.qty : 0)}
+                    </div>
+                    <div className="text-xs text-foreground-lighter">{sale.mrp ? `${((row.wspValue / (row.qty || 1) / sale.mrp) * 100).toFixed(1)}% of MRP` : ""}</div>
+                  </TableCell>
                   <TableCell className="text-right tabular-nums whitespace-nowrap text-foreground-light">
                     {pc(row.gstRate)}
                     {sale.gstRateOverride != null ? <Badge variant="warning" className="ml-1.5">Fixed</Badge> : null}
@@ -324,6 +358,7 @@ export default function SalesPage() {
                 <TableCell className="text-right tabular-nums">{inr(tot.qty, 0)} pcs</TableCell>
                 <TableCell />
                 <TableCell className="text-right tabular-nums">{inr(tot.sale)}</TableCell>
+                <TableCell className="text-right tabular-nums">{inr(tot.wsp)}</TableCell>
                 <TableCell />
                 <TableCell className="text-right tabular-nums">{inr(tot.margin)}</TableCell>
                 <TableCell className="text-right tabular-nums text-foreground">{inr(tot.cn)}</TableCell>
@@ -391,6 +426,7 @@ export default function SalesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <RatesDialog open={rating} onOpenChange={setRating} brand={brand} settings={settings} />
       <ImportDialog open={importing} onOpenChange={setImporting} brand={brand} settings={settings} />
     </Page>
   );

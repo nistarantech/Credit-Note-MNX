@@ -45,3 +45,28 @@ assert.equal(two.sales.length, 2, "both tables read");
 assert.deepEqual(two.sales.map((x) => [x.billNo, x.barcode, x.department]), [["Nx/24/1", "8905951533114", "Mens Shirts"], ["NX-11", "8909432034497", "MENS FULL SHIRT"]]);
 
 console.log("pos reports: ok");
+
+// Purchase rates
+const { readRateSheet, matchRates } = await import("./rates.ts");
+const register = readRateSheet([
+  ["MNX FAMILY STORE"],
+  ["Party Name", "Bill No.", "Bill Date", "Item Name", "Qty", "Purc Rate", "Sales Rate", "Tax", "Season"],
+  ["ARVIND", "1844483280", d, "KIDS HALF T-SHIRT", 1, 1251.7, 1999, "GST 12 %", "AW-25"],
+  ["ARVIND", "1849551611", d, "MENS HALF T-SHIRT", 1, 2031.75, 3499, "GST 5 %", "AW-25"],
+] as never, "Purchase.xlsx");
+assert.equal(register.length, 2);
+const stockAtCost = readRateSheet([["Company Barcode", "Item", "MRP", "CL. Qty", "CL. Amt"], ["890A", "MENS JEANS", 3999, 2, 5141.92]] as never, "Stock.xlsx");
+close(stockAtCost[0].rate, 2570.96, "stock value ÷ qty at cost");
+const stockAtMrp = readRateSheet([["Company Barcode", "Item", "MRP", "CL. Qty", "CL. Amt"], ["890A", "MENS JEANS", 3999, 2, 7998], ["890B", "MENS JEANS", 2999, 1, 2999]] as never, "Stock.xlsx");
+assert.equal(stockAtMrp.length, 0, "stock valued at MRP is not a purchase rate");
+const m = matchRates(
+  [
+    { id: "a", barcode: "890A", department: "MENS JEANS", mrp: 3999, ageing: "AW-24" },
+    { id: "b", barcode: "999", department: "Kids Half T-Shirt", mrp: 1999, ageing: "AW-25" },
+    { id: "c", barcode: "998", department: "MENS HALF T-SHIRT", mrp: 1299, ageing: "SS-26" },
+  ],
+  [...stockAtCost, ...register],
+);
+assert.deepEqual(m.map((x) => [x.how, x.wsp]), [["barcode", 2570.96], ["item+mrp+season", 1251.7], ["none", null]]);
+assert.ok(m[1].wspSource!.includes("bill 1844483280"), "source kept");
+console.log("purchase rates: ok");

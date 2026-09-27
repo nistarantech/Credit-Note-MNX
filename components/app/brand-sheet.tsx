@@ -218,7 +218,7 @@ export function BrandSheet({
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <FormField label="WSP factor" htmlFor="p-wsp" hint={`Purchase rate = MRP × ${t.wspFactor} (MRP ÷ ${(1 / (t.wspFactor || 1)).toFixed(3)})`}>
+                <FormField label="WSP factor (estimate only)" htmlFor="p-wsp" hint={`Only for sales with no actual purchase rate: WSP ≈ MRP × ${t.wspFactor}. Such sales are marked "est." — load the real rates on the Sales screen.`}>
                   <NumberInput id="p-wsp" value={t.wspFactor} onChange={(v) => setT({ wspFactor: v ?? 0 })} />
                 </FormField>
                 <FormField

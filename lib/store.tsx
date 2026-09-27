@@ -358,6 +358,18 @@ function useStoreState() {
           const set = new Set(ids);
           return { ...d, sales: d.sales.map((s) => (set.has(s.id) && !s.claimId ? { ...s, ...patch } : s)) };
         }),
+      /** Purchase rates found for sales, each with where it came from. Sales already in a claim are left alone. */
+      setSaleRates: (rates: { id: string; wsp: number | null; wspSource: string | null }[]) =>
+        update((d) => {
+          const byId = new Map(rates.map((r) => [r.id, r]));
+          return {
+            ...d,
+            sales: d.sales.map((s) => {
+              const r = byId.get(s.id);
+              return r && !s.claimId ? { ...s, wsp: r.wsp, wspSource: r.wspSource } : s;
+            }),
+          };
+        }),
       addSales: (list: Sale[]) => update((d) => ({ ...d, sales: [...d.sales, ...list] })),
       deleteSales: (ids: string[]) => update((d) => ({ ...d, sales: d.sales.filter((s) => !ids.includes(s.id) || s.claimId) })),
       raiseClaim: (n: ClaimDraft, saleIds: string[]) => {

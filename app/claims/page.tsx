@@ -225,6 +225,13 @@ function NewClaim({ month: initialMonth, onDone }: { month?: string; onDone: (id
             </CardContent>
           </Card>
           {!stats.open.length ? <Admonition type="warning" title="Nothing to claim" description="Every sale of this brand is already in a claim. Add or import sales first." /> : null}
+          {included.some((x) => x.wsp === null || x.wsp === undefined) ? (
+            <Admonition
+              type="warning"
+              title={`${included.filter((x) => x.wsp === null || x.wsp === undefined).length} of these sales have no actual WSP`}
+              description={`Their purchase rate is estimated as MRP × ${settings.wspFactor}, so this claim is partly an estimate. Set their purchase rates on the Sales screen (Purchase rates) before raising it.`}
+            />
+          ) : null}
         </div>
         <div className="min-w-0 overflow-x-auto">
           <ClaimDoc draft business={data.globals.business} number={number} date={date} from={from} to={to} remarks={remarks} brand={brand} settings={settings} lines={included} />

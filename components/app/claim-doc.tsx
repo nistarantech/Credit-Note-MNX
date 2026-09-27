@@ -153,7 +153,9 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
       ) : null}
 
       <section className="py-6 break-before-page">
-        <p className="heading-meta text-foreground-lighter mb-2">Annexure — {rows.length} sales</p>
+        <p className="heading-meta text-foreground-lighter mb-2">
+          Annexure — {rows.length} sales{rows.some((r) => r.wspEstimated) ? ` · WSP marked est. is MRP × ${settings.wspFactor}, no purchase rate on record` : ""}
+        </p>
         <Table className="text-xs">
           <TableHeader>
             <TableRow>
@@ -163,6 +165,7 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
               <TableHead>Type</TableHead>
               <TableHead className="text-right">MRP × qty</TableHead>
               <TableHead className="text-right">Sale value</TableHead>
+              <TableHead className="text-right">WSP</TableHead>
               <TableHead className="text-right">Margin</TableHead>
               <TableHead className="text-right">Credit</TableHead>
             </TableRow>
@@ -176,6 +179,7 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
                 <TableCell>{r.type === "DISC" ? "EOSS" : "Fresh"}</TableCell>
                 <TableCell className="text-right tabular-nums">{inr(r.mrp, 0)} × {r.qty}</TableCell>
                 <TableCell className="text-right tabular-nums">{inr(r.realization)}</TableCell>
+                <TableCell className="text-right tabular-nums">{inr(r.wspValue)}{r.wspEstimated ? <span className="ml-1 text-foreground-lighter">est.</span> : null}</TableCell>
                 <TableCell className="text-right tabular-nums">{inr(r.margin)}</TableCell>
                 <TableCell className="text-right tabular-nums">{inr(r.cn)}</TableCell>
               </TableRow>
@@ -186,6 +190,7 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
               <TableCell colSpan={4}>Total</TableCell>
               <TableCell className="text-right tabular-nums">{inr(s.all.qty, 0)} pcs</TableCell>
               <TableCell className="text-right tabular-nums">{inr(s.all.realization)}</TableCell>
+              <TableCell className="text-right tabular-nums">{inr(s.all.wspValue)}</TableCell>
               <TableCell className="text-right tabular-nums">{inr(s.all.margin)}</TableCell>
               <TableCell className="text-right tabular-nums">{inr(s.all.cn)}</TableCell>
             </TableRow>

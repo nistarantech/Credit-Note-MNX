@@ -75,6 +75,7 @@ export interface Line {
   mrp: number;
   qty: number;
   wsp: number | null; // per-piece WSP from company invoice; null = MRP x wspFactor
+  wspSource?: string | null; // where the WSP came from (invoice, rate list…); null with wsp = typed in or imported
   gstB2B: number | null; // total B-B GST override; null = slab on WSP
   flatDisc?: number | null; // ₹ off the whole line on the bill, on top of the % discount
   cashback?: number | null; // ₹ cashback given to the customer on the whole line, after billing
@@ -89,6 +90,7 @@ export interface Row extends Line {
   flatDiscAmt: number;
   cashbackAmt: number;
   termsFrom: string | null; // date the brand terms used took effect; null = the brand's original terms
+  wspEstimated: boolean; // no actual purchase rate: WSP is MRP × the brand's WSP factor
   realization: number; // Q
   gstRate: number; // B-C rate picked from slab (or the override)
   gstFactor: number; // S
@@ -190,6 +192,7 @@ export function calcRow(l: Line, s: Settings): Row {
     flatDiscAmt,
     cashbackAmt,
     termsFrom: terms.from,
+    wspEstimated: l.wsp === null || l.wsp === undefined,
     realization,
     gstRate,
     gstFactor,
