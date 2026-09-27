@@ -6,10 +6,11 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CalendarCheck, FileText } from "lucide-react";
 import { inr, termsFor } from "@/lib/calc";
-import { monthEnd, monthLabel, monthRange, claimPayload, salesMonths, thisMonth, type BrandMonth } from "@/lib/month";
+import { monthEnd, monthLabel, monthRange, claimPayload, salesMonths, thisMonth, type BrandMonth, type SaleKind } from "@/lib/month";
 import { calcSettings, useStore } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   AlertDialog, AlertDialogAction, AlertDialogBody, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -39,6 +40,7 @@ export default function MonthEndPage() {
   const [month, setMonth] = useState(() => months[0] ?? thisMonth());
   const [issuing, setIssuing] = useState<BrandMonth[] | null>(null);
   const [date, setDate] = useState("");
+  const [kind, setKind] = useState<SaleKind>("all");
 
   // remember the month between visits
   useEffect(() => {
@@ -54,7 +56,7 @@ export default function MonthEndPage() {
     } catch {}
   };
 
-  const rows = monthEnd(data, month);
+  const rows = monthEnd(data, month, kind);
   const withSales = rows.filter((r) => r.sales.length);
   const idle = rows.filter((r) => !r.sales.length && r.brand.active);
   const pending = withSales.filter((r) => r.open.length);
@@ -72,7 +74,7 @@ export default function MonthEndPage() {
       raiseClaim(claimPayload(data, r.brand, r.open, { date, from, to, month, remarks: "" }), r.open.map((s) => s.id));
     }
     const total = issuing.reduce((a, r) => a + r.pending.totalCn, 0);
-    toast.success(`${issuing.length} claim${issuing.length > 1 ? "s" : ""} raised for ${monthLabel(month)}`, { description: `Total ₹ ${inr(total)}` });
+    toast.success(`${issuing.length} claim${issuing.length > 1 ? "s" : ""} raised for ${monthLabel(month)}${kind === "all" ? "" : kind === "DISC" ? " (EOSS sales)" : " (fresh sales)"}`, { description: `Total ₹ ${inr(total)}` });
     setIssuing(null);
   };
 
@@ -83,6 +85,11 @@ export default function MonthEndPage() {
       size="large"
       actions={
         <>
+          <ToggleGroup type="single" value={kind} onValueChange={(v) => v && setKind(v as SaleKind)} className="gap-1 rounded-md bg-surface-200 p-1" aria-label="Which sales">
+            <ToggleGroupItem value="all" size="tiny">All sales</ToggleGroupItem>
+            <ToggleGroupItem value="DISC" size="tiny">EOSS only</ToggleGroupItem>
+            <ToggleGroupItem value="FRESH" size="tiny">Fresh only</ToggleGroupItem>
+          </ToggleGroup>
           <MonthPicker value={month} onChange={pick} months={months} />
           <Button variant="primary" disabled={!pending.length} onClick={() => openIssue(pending)}>
             Claim all pending{pending.length ? ` (${pending.length})` : ""}

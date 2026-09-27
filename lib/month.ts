@@ -39,11 +39,15 @@ export interface BrandMonth {
   total: Summary; // the month as a whole, claimed or not
 }
 
+/** Which sales a claim takes: all of them, or only EOSS (discounted) or only fresh (full-price) ones. */
+export type SaleKind = "all" | "DISC" | "FRESH";
+export const ofKind = (kind: SaleKind) => (s: Sale) => kind === "all" || s.type === kind;
+
 /** The month-end position of every brand: what is claimed, what is still to claim. */
-export function monthEnd(d: Data, month: string): BrandMonth[] {
+export function monthEnd(d: Data, month: string, kind: SaleKind = "all"): BrandMonth[] {
   return d.brands.map((brand) => {
     const s = calcSettings(d.globals, brand);
-    const sales = d.sales.filter((x) => x.brandId === brand.id && monthOf(x.date) === month);
+    const sales = d.sales.filter((x) => x.brandId === brand.id && monthOf(x.date) === month && ofKind(kind)(x));
     const open = sales.filter((x) => !x.claimId);
     const claimIds = new Set(sales.map((x) => x.claimId).filter(Boolean));
     return {

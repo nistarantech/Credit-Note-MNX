@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, FileSpreadsheet, FileText, Plus, Printer, ReceiptIndianRupee, Trash2 } from "lucide-react";
 import { inr, summarize } from "@/lib/calc";
-import { claimPayload, monthLabel, monthOf, monthRange, salesMonths } from "@/lib/month";
+import { claimPayload, monthLabel, monthOf, monthRange, ofKind, salesMonths, type SaleKind } from "@/lib/month";
 import { calcSettings, useStore, type Claim } from "@/lib/store";
 import { brandStats } from "@/lib/stats";
 import { printPage } from "@/lib/print";
@@ -144,11 +144,13 @@ function NewClaim({ month: initialMonth, onDone }: { month?: string; onDone: (id
   const [range, setRange] = useState<[string, string]>([dates[0] ?? today(), dates[dates.length - 1] ?? today()]);
   const [date, setDate] = useState(today());
   const [remarks, setRemarks] = useState("");
+  const [kind, setKind] = useState<SaleKind>("all");
 
   if (!brand || !stats) return <Page title="New claim"><NoBrand /></Page>;
 
   const [from, to] = period === "month" && month ? monthRange(month) : range;
-  const included = stats.open.filter((s) => (period === "month" ? monthOf(s.date) === month : s.date >= from && s.date <= to));
+  const inPeriod = stats.open.filter((s) => (period === "month" ? monthOf(s.date) === month : s.date >= from && s.date <= to));
+  const included = inPeriod.filter(ofKind(kind));
   const settings = calcSettings(data.globals, brand);
   const sum = summarize(included, settings);
   const number = `${data.globals.claimPrefix}${String(data.globals.nextClaimNo).padStart(4, "0")}`;
@@ -178,6 +180,13 @@ function NewClaim({ month: initialMonth, onDone }: { month?: string; onDone: (id
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <FormField label="Claim no."><Input value={number} readOnly className="font-mono" /></FormField>
+              <FormField label="Sales to claim" hint={kind === "all" ? undefined : `The ${kind === "DISC" ? "fresh" : "EOSS"} sales stay unclaimed, for a claim of their own`}>
+                <ToggleGroup type="single" value={kind} onValueChange={(v) => v && setKind(v as SaleKind)} className="w-fit gap-1 rounded-md bg-surface-200 p-1">
+                  <ToggleGroupItem value="all" size="tiny">All</ToggleGroupItem>
+                  <ToggleGroupItem value="DISC" size="tiny">EOSS only</ToggleGroupItem>
+                  <ToggleGroupItem value="FRESH" size="tiny">Fresh only</ToggleGroupItem>
+                </ToggleGroup>
+              </FormField>
               <FormField label="Period">
                 <ToggleGroup type="single" value={period} onValueChange={(v) => v && setPeriod(v as "month" | "range")} className="w-fit gap-1 rounded-md bg-surface-200 p-1">
                   <ToggleGroupItem value="month" size="tiny">Month</ToggleGroupItem>
@@ -206,7 +215,7 @@ function NewClaim({ month: initialMonth, onDone }: { month?: string; onDone: (id
             </CardContent>
             <CardContent>
               <dl className="divide-y">
-                <Figure label="Sales included" value={`${included.length} of ${stats.open.length} unclaimed`} />
+                <Figure label="Sales included" value={`${included.length} of ${inPeriod.length} unclaimed in the period`} />
                 <Figure label="Pieces" value={inr(sum.all.qty, 0)} />
                 <Figure label="Credit note to claim" value={`₹ ${inr(sum.totalCn)}`} emphasis />
               </dl>
