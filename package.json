@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3210",
+    "dev:alt": "NEXT_DIST_DIR=.next-alt next dev -p 3211",
     "build": "next build",
     "test": "node --experimental-strip-types lib/calc.test.ts && node --experimental-strip-types lib/excel.test.ts && node --experimental-strip-types lib/recon.test.ts",
     "desktop": "next build && electron .",
