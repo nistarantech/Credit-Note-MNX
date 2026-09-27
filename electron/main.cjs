@@ -108,6 +108,20 @@ app.whenReady().then(() => {
     return filePath;
   });
 
+  // Any other file the page produces (e.g. a claim as .xlsx): save dialog, then open it.
+  ipcMain.handle("save-file", async (event, fileName, bytes) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const ext = path.extname(fileName).slice(1) || "*";
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      defaultPath: path.join(app.getPath("documents"), fileName),
+      filters: [{ name: ext === "xlsx" ? "Excel workbook" : ext.toUpperCase(), extensions: [ext] }],
+    });
+    if (canceled || !filePath) return null;
+    fs.writeFileSync(filePath, Buffer.from(bytes));
+    shell.openPath(filePath);
+    return filePath;
+  });
+
   createWindow();
   app.on("activate", () => BrowserWindow.getAllWindows().length === 0 && createWindow());
 });

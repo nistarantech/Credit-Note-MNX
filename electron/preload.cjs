@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("desktop", {
   platform: process.platform,
   savePdf: (fileName) => ipcRenderer.invoke("save-pdf", fileName),
+  saveFile: (fileName, bytes) => ipcRenderer.invoke("save-file", fileName, bytes),
   db: {
     load: () => ipcRenderer.invoke("db:load"),
     apply: (ops) => ipcRenderer.invoke("db:apply", ops),

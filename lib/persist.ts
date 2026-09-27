@@ -31,6 +31,7 @@ declare global {
     desktop?: {
       platform: string;
       savePdf: (fileName: string) => Promise<string | null>;
+      saveFile?: (fileName: string, bytes: ArrayBuffer) => Promise<string | null>;
       db?: DesktopDb;
       files?: {
         storeImport: (a: { brand: string; months: string[]; fileName: string; bytes: ArrayBuffer }) => Promise<Record<string, string>>;

@@ -3,12 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, FileText, Plus, Printer, ReceiptIndianRupee, Trash2 } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, FileText, Plus, Printer, ReceiptIndianRupee, Trash2 } from "lucide-react";
 import { inr, summarize } from "@/lib/calc";
 import { claimPayload, monthLabel, monthOf, monthRange, salesMonths } from "@/lib/month";
 import { calcSettings, useStore, type Claim } from "@/lib/store";
 import { brandStats } from "@/lib/stats";
 import { printPage } from "@/lib/print";
+import { saveClaimExcel } from "@/lib/claim-excel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -235,6 +236,14 @@ function ViewClaim({ id, onBack }: { id: string; onBack: () => void }) {
     const path = await printPage(`${c.number.replace(/[\\/]/g, "-")} ${c.brand.name}.pdf`);
     if (path) toast.success("PDF saved", { description: path });
   };
+  const excel = async () => {
+    try {
+      const path = await saveClaimExcel({ business: data.globals.business, number: c.number, date: c.date, from: c.from, to: c.to, remarks: c.remarks, brand: c.brand, settings: c.settings, lines: c.lines, received: c.received });
+      if (path) toast.success("Excel saved", { description: path });
+    } catch (e) {
+      toast.error("Couldn't make the Excel file", { description: (e as Error).message });
+    }
+  };
   const short = c.received ? c.total - c.received.amount : 0;
 
   return (
@@ -245,6 +254,7 @@ function ViewClaim({ id, onBack }: { id: string; onBack: () => void }) {
         <>
           <Button variant="default" icon={<ArrowLeft size={14} strokeWidth={1.5} />} onClick={onBack}>All claims</Button>
           <Button variant="default" icon={<Trash2 size={14} strokeWidth={1.5} />} onClick={() => setConfirm(true)}>Delete</Button>
+          <Button variant="default" icon={<FileSpreadsheet size={14} strokeWidth={1.5} />} onClick={excel}>Excel</Button>
           <Button variant="default" icon={<Printer size={14} strokeWidth={1.5} />} onClick={save}>{typeof window !== "undefined" && window.desktop ? "Save PDF" : "Print / PDF"}</Button>
           <Button variant="primary" icon={<ReceiptIndianRupee size={14} strokeWidth={1.5} />} onClick={() => setRecording(true)}>
             {c.received ? "Edit brand's CN" : "Record brand's CN"}
