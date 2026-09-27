@@ -100,6 +100,14 @@ export function Figure({
 
 export const today = () => new Date().toISOString().slice(0, 10);
 
+/** yyyy-mm-dd shifted by whole days. */
+export function shiftDay(d: string, days: number) {
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, day + days)).toISOString().slice(0, 10);
+}
+export const dayBefore = (d: string) => shiftDay(d, -1);
+export const dayAfter = (d: string) => shiftDay(d, 1);
+
 export function fmtDate(d: string) {
   if (!d) return "—";
   const [y, m, day] = d.split("-").map(Number);

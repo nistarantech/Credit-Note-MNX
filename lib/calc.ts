@@ -37,12 +37,24 @@ export interface MarginSlab {
   margin: number;
 }
 
-// Everything the formulas need: the global GST rules plus the brand's deal.
-export interface Settings {
-  freshMargin: number; // dealer margin on FRESH sales (30%)
-  discMargin: number; // dealer margin on DISC (EOSS) sales (20%)
+/** A brand's terms: your margins, margin slabs by discount, and the WSP factor. */
+export interface Terms {
+  freshMargin: number; // your margin on FRESH sales (30%)
+  discMargin: number; // your margin on DISC (EOSS) sales (20%)
   marginSlabs: MarginSlab[]; // optional per-discount margins, override the two above
   wspFactor: number; // WSP = MRP x factor when not given (0.625 = MRP / 1.6)
+}
+
+/** New terms agreed with a brand, for sales billed on/after `from`. */
+export interface TermChange extends Terms {
+  from: string; // yyyy-mm-dd
+}
+
+// Everything the formulas need: the global GST rules plus the brand's terms.
+// The Terms fields are the brand's terms from the start; termChanges override
+// them from later dates.
+export interface Settings extends Terms {
+  termChanges: TermChange[];
   b2cSlabs: GstSlab[]; // GST inside the retail sale price (B-C)
   roundGstFactor: boolean; // sheet uses 0.1071 / 0.0476 / 0.1525 (4 decimals)
   b2bSlabs: GstSlab[]; // GST on the brand's bill (B-B), by invoice date
@@ -64,6 +76,8 @@ export interface Line {
   qty: number;
   wsp: number | null; // per-piece WSP from company invoice; null = MRP x wspFactor
   gstB2B: number | null; // total B-B GST override; null = slab on WSP
+  flatDisc?: number | null; // ₹ off the whole line on the bill, on top of the % discount
+  cashback?: number | null; // ₹ cashback given to the customer on the whole line, after billing
   marginOverride?: number | null; // custom margin for this sale; null = the brand's terms
   gstRateOverride?: number | null; // GST rate in the sale price; null = rate history
   purchaseDate?: string | null; // brand's invoice date, picks the B-B slab; null = sale date
@@ -71,7 +85,10 @@ export interface Line {
 
 export interface Row extends Line {
   mrpValue: number; // N
-  discAmt: number; // O / P
+  discAmt: number; // O / P — % discount + flat discount
+  flatDiscAmt: number;
+  cashbackAmt: number;
+  termsFrom: string | null; // date the brand terms used took effect; null = the brand's original terms
   realization: number; // Q
   gstRate: number; // B-C rate picked from slab (or the override)
   gstFactor: number; // S
@@ -91,6 +108,7 @@ export const DEFAULT_SETTINGS: Settings = {
   discMargin: 0.2,
   marginSlabs: [],
   wspFactor: 0.625,
+  termChanges: [],
   b2cSlabs: DEFAULT_GST_SLABS,
   roundGstFactor: true,
   b2bSlabs: DEFAULT_GST_SLABS,
@@ -113,7 +131,17 @@ export function slabFor(date: string, slabs: GstSlab[]): GstSlab {
   return pick;
 }
 
-export function marginFor(type: SaleType, disc: number, s: Settings): number {
+/** The brand terms in force on `date`: the latest change from on/before it, else the original terms. */
+export function termsFor(date: string, s: Settings): Terms & { from: string | null } {
+  const change = [...(s.termChanges ?? [])]
+    .sort((a, b) => a.from.localeCompare(b.from))
+    .filter((c) => !date || c.from <= date)
+    .pop();
+  if (change) return change;
+  return { freshMargin: s.freshMargin, discMargin: s.discMargin, marginSlabs: s.marginSlabs, wspFactor: s.wspFactor, from: null };
+}
+
+export function marginFor(type: SaleType, disc: number, s: Terms): number {
   const slab = s.marginSlabs
     .filter((m) => m.type === type)
     .sort((a, b) => a.upTo - b.upTo)
@@ -122,9 +150,15 @@ export function marginFor(type: SaleType, disc: number, s: Settings): number {
 }
 
 export function calcRow(l: Line, s: Settings): Row {
+  const terms = termsFor(l.date, s);
   const mrpValue = l.mrp * l.qty;
-  const discAmt = mrpValue * l.disc;
+  // A flat discount comes off the bill, like the % discount, so it lowers the GST too.
+  const flatDiscAmt = l.flatDisc ?? 0;
+  const discAmt = mrpValue * l.disc + flatDiscAmt;
   const realization = mrpValue - discAmt;
+  // Cashback is paid to the customer after billing: the bill and its GST stay,
+  // but what you keep — and so your margin and the brand's share — is lower.
+  const cashbackAmt = l.cashback ?? 0;
 
   // B-C GST is inclusive in the sale price. Slab is chosen by bill date, then
   // on the per-piece value before GST (realization / (1 + low rate)).
@@ -136,23 +170,26 @@ export function calcRow(l: Line, s: Settings): Row {
   const gstB2C = realization * gstFactor;
 
   const marginCustom = l.marginOverride !== null && l.marginOverride !== undefined;
-  const marginPct = marginCustom ? l.marginOverride! : marginFor(l.type, l.disc, s);
-  const margin = (realization - gstB2C) * marginPct;
+  const marginPct = marginCustom ? l.marginOverride! : marginFor(l.type, l.disc, terms);
+  const margin = (realization - gstB2C - cashbackAmt) * marginPct;
 
-  const wspUnit = l.wsp ?? l.mrp * s.wspFactor;
+  const wspUnit = l.wsp ?? l.mrp * terms.wspFactor;
   const wspValue = wspUnit * l.qty;
   // B-B GST follows the rate in force when the brand invoiced the goods.
   const b2bSlab = slabFor(l.purchaseDate || l.date, s.b2bSlabs);
   const gstB2BRate = wspUnit > b2bSlab.threshold ? b2bSlab.high : b2bSlab.low;
   const gstB2BValue = l.gstB2B ?? wspValue * gstB2BRate;
 
-  const netPayable = realization - gstB2C - margin + gstB2BValue;
+  const netPayable = realization - gstB2C - cashbackAmt - margin + gstB2BValue;
   const cn = wspValue + gstB2BValue - netPayable;
 
   return {
     ...l,
     mrpValue,
     discAmt,
+    flatDiscAmt,
+    cashbackAmt,
+    termsFrom: terms.from,
     realization,
     gstRate,
     gstFactor,
@@ -172,6 +209,8 @@ export interface Totals {
   qty: number;
   mrpValue: number;
   discAmt: number;
+  flatDiscAmt: number;
+  cashbackAmt: number;
   realization: number;
   gstB2C: number;
   margin: number;
@@ -182,7 +221,7 @@ export interface Totals {
 }
 
 export function sum(rows: Row[]): Totals {
-  const t: Totals = { qty: 0, mrpValue: 0, discAmt: 0, realization: 0, gstB2C: 0, margin: 0, netPayable: 0, wspValue: 0, gstB2BValue: 0, cn: 0 };
+  const t: Totals = { qty: 0, mrpValue: 0, discAmt: 0, flatDiscAmt: 0, cashbackAmt: 0, realization: 0, gstB2C: 0, margin: 0, netPayable: 0, wspValue: 0, gstB2BValue: 0, cn: 0 };
   for (const r of rows) for (const k of Object.keys(t) as (keyof Totals)[]) t[k] += r[k];
   return t;
 }
@@ -195,7 +234,7 @@ export interface Summary {
   // BILLING WORKING-EOSS (DISC rows only)
   billing: { qty: number; mrpValue: number; wsp: number; gst: number; total: number };
   // MARGIN WORKING (DISC rows only)
-  marginWorking: { rv: number; taxB2C: number; not: number; dealer: number; company: number; gst: number; netReceivable: number };
+  marginWorking: { rv: number; taxB2C: number; not: number; cashback: number; dealer: number; company: number; gst: number; netReceivable: number };
   eossCn: number; // SUMMARY!B25 = billing - net receivable
   freshCn: number; // SUMMARY!B26
   totalCn: number; // SUMMARY!B27
@@ -221,11 +260,12 @@ export function summarize(lines: Line[], s: Settings): Summary {
     total: disc.wspValue + disc.gstB2BValue,
   };
   const not = disc.realization - disc.gstB2C;
-  const company = not - disc.margin;
+  const company = not - disc.cashbackAmt - disc.margin;
   const marginWorking = {
     rv: disc.realization,
     taxB2C: -disc.gstB2C,
     not,
+    cashback: -disc.cashbackAmt,
     dealer: -disc.margin,
     company,
     gst: disc.gstB2BValue,

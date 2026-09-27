@@ -1,6 +1,6 @@
 "use client";
 
-import { calcRow, inr, marginFor, type Line, type Settings } from "@/lib/calc";
+import { calcRow, inr, marginFor, termsFor, type Line, type Settings } from "@/lib/calc";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FormField, NumberInput, fmtDate } from "./fields";
@@ -20,8 +20,9 @@ export function SaleFields({
   line, set, settings, showRefs = true, suggest,
 }: { line: Line; set: (patch: Partial<Line>) => void; settings: Settings; showRefs?: boolean; suggest?: Suggestions }) {
   const row = calcRow(line, settings);
-  const autoWsp = line.mrp * settings.wspFactor;
-  const brandMargin = marginFor(line.type, line.disc, settings);
+  const terms = termsFor(line.date, settings);
+  const autoWsp = line.mrp * terms.wspFactor;
+  const brandMargin = marginFor(line.type, line.disc, terms);
   const historyRate = calcRow({ ...line, gstRateOverride: null }, settings).gstRate;
 
   return (
@@ -45,11 +46,20 @@ export function SaleFields({
         <FormField label="Quantity" htmlFor="f-qty" hint="Negative for a return">
           <NumberInput id="f-qty" value={line.qty} onChange={(v) => set({ qty: v ?? 0 })} />
         </FormField>
-        <FormField label="Discount given" htmlFor="f-disc" hint={`Sale value ₹ ${inr(row.realization)}`}>
+        <FormField label="Discount given" htmlFor="f-disc" hint={`Sale value on the bill ₹ ${inr(row.realization)}`}>
           <PercentPicker id="f-disc" value={line.disc} onChange={(v) => set({ disc: v ?? 0 })} presets={DISCOUNT_PRESETS} />
         </FormField>
-        <FormField label="Purchase rate (WSP) per piece" htmlFor="f-wsp" hint={line.wsp === null ? `Auto: MRP × ${settings.wspFactor}` : "From the brand's invoice"}>
+        <FormField label="Purchase rate (WSP) per piece" htmlFor="f-wsp" hint={line.wsp === null ? `Auto: MRP × ${terms.wspFactor}` : "From the brand's invoice"}>
           <NumberInput id="f-wsp" prefix="₹" allowEmpty value={line.wsp} placeholder={inr(autoWsp)} onChange={(v) => set({ wsp: v })} />
+        </FormField>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <FormField label="Flat discount (₹, whole line)" htmlFor="f-flat" hint="Taken off the bill, on top of the % discount">
+          <NumberInput id="f-flat" prefix="₹" allowEmpty value={line.flatDisc ?? null} placeholder="0" onChange={(v) => set({ flatDisc: v || null })} />
+        </FormField>
+        <FormField label="Cashback to customer (₹, whole line)" htmlFor="f-cash" hint="Paid after billing — lowers what you keep, not the GST">
+          <NumberInput id="f-cash" prefix="₹" allowEmpty value={line.cashback ?? null} placeholder="0" onChange={(v) => set({ cashback: v || null })} />
         </FormField>
       </div>
 
@@ -59,7 +69,7 @@ export function SaleFields({
           <p className="text-xs text-foreground-lighter">Normally from the brand&apos;s terms and the GST rate history. Change them only for this sale.</p>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Your margin" htmlFor="f-margin" hint={line.marginOverride == null ? "As agreed with the brand" : "Custom for this sale"}>
+          <FormField label="Your margin" htmlFor="f-margin" hint={line.marginOverride == null ? (terms.from ? `Brand terms from ${fmtDate(terms.from)}` : "As agreed with the brand") : "Custom for this sale"}>
             <MarginSelect id="f-margin" value={line.marginOverride ?? null} onChange={(v) => set({ marginOverride: v })} brandMargin={brandMargin} />
           </FormField>
           <FormField label="GST in sale price" htmlFor="f-gst" hint={line.gstRateOverride == null ? "Picked by bill date and per-piece value" : "Fixed for this sale"}>

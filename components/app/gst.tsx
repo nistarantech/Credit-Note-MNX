@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { fmtDate } from "./fields";
-import { NumberInput } from "./fields";
+import { NumberInput, dayBefore, fmtDate } from "./fields";
 
 const pc = (r: number) => `${+(r * 100).toFixed(2)}%`;
 
@@ -38,12 +37,6 @@ export function RateSelect({
   );
 }
 
-/** Day before a yyyy-mm-dd date. */
-const dayBefore = (d: string) => {
-  const [y, m, day] = d.split("-").map(Number);
-  const t = new Date(Date.UTC(y, m - 1, day - 1));
-  return t.toISOString().slice(0, 10);
-};
 
 /** Plain-words period of each slab: "Until 21 Sep 2025", "22 Sep 2025 onwards". */
 export function periodOf(slabs: GstSlab[], i: number) {

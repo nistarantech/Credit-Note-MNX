@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Building2, MoreHorizontal, Pencil, Plus, ReceiptText, Trash2 } from "lucide-react";
-import { inr } from "@/lib/calc";
-import { newBrand, useStore, type Brand } from "@/lib/store";
+import { inr, termsFor } from "@/lib/calc";
+import { calcSettings, newBrand, useStore, type Brand } from "@/lib/store";
 import { brandStats } from "@/lib/stats";
 import { SAMPLE_BRAND, sampleLines } from "@/lib/sample";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyStatePresentational } from "@/components/ui-patterns/empty-state";
+import { fmtDate, today } from "@/components/app/fields";
 import { Page } from "@/components/app/page";
 import { BrandSheet } from "@/components/app/brand-sheet";
 
@@ -100,11 +101,20 @@ export default function PartiesPage() {
                     </TableCell>
                     <TableCell className="font-mono text-xs text-foreground-light">{p.gstNo || "—"}</TableCell>
                     <TableCell className="text-foreground-light tabular-nums">
-                      <div>EOSS {Math.round(p.discMargin * 100)}% · Fresh {Math.round(p.freshMargin * 100)}%</div>
-                      <div className="text-xs text-foreground-lighter">
-                        {p.marginSlabs.length ? `${p.marginSlabs.length} discount slabs · ` : ""}WSP × {p.wspFactor}
-                        {p.dealName ? ` · ${p.dealName}` : ""}
-                      </div>
+                      {(() => {
+                        const t = termsFor(today(), calcSettings(data.globals, p));
+                        const next = p.termChanges.filter((c) => c.from > today()).sort((a, b) => a.from.localeCompare(b.from))[0];
+                        return (
+                          <>
+                            <div>EOSS {Math.round(t.discMargin * 100)}% · Fresh {Math.round(t.freshMargin * 100)}%</div>
+                            <div className="text-xs text-foreground-lighter">
+                              {t.marginSlabs.length ? `${t.marginSlabs.length} discount slabs · ` : ""}WSP × {t.wspFactor}
+                              {p.dealName ? ` · ${p.dealName}` : ""}
+                            </div>
+                            {next ? <div className="text-xs text-warning-600">New terms from {fmtDate(next.from)}</div> : null}
+                          </>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{s.open.length}</TableCell>
                     <TableCell className="text-right tabular-nums text-foreground">₹ {inr(s.pending.totalCn)}</TableCell>

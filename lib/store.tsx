@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { DEFAULT_SETTINGS, uid, withGstHistory, type Line, type MarginSlab, type Settings } from "./calc";
+import { DEFAULT_SETTINGS, uid, withGstHistory, type Line, type MarginSlab, type Settings, type TermChange } from "./calc";
 import { desktopDb, diff, fromSnapshot, isEmpty, settingsFixups } from "./persist";
 
 /**
@@ -28,6 +28,7 @@ export interface Brand {
   discMargin: number;
   marginSlabs: MarginSlab[];
   wspFactor: number;
+  termChanges: TermChange[]; // later terms from a date (the fields above are the original terms)
   cnBasePct: number | null; // null = use the global setting
   dispatch: Settings["dispatch"];
   active: boolean;
@@ -165,6 +166,7 @@ export function newBrand(g: Globals, patch: Partial<Brand> = {}): Brand {
     dealName: "",
     ...g.defaults,
     marginSlabs: [],
+    termChanges: [],
     cnBasePct: null,
     dispatch: { qty: 0, mrp: 0, wsp: 0, gst: 0 },
     active: true,
@@ -181,6 +183,7 @@ export function calcSettings(g: Globals, p: Brand | undefined): Settings {
     discMargin: p?.discMargin ?? g.defaults.discMargin,
     marginSlabs: p?.marginSlabs ?? [],
     wspFactor: p?.wspFactor ?? g.defaults.wspFactor,
+    termChanges: p?.termChanges ?? [],
     b2cSlabs: g.b2cSlabs,
     roundGstFactor: g.roundGstFactor,
     b2bSlabs: g.b2bSlabs,

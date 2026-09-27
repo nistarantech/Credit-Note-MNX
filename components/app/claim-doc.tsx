@@ -55,6 +55,13 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
         <dl className="text-sm">
           <Figure label="Deal" value={brand.dealName || `${Math.round(settings.freshMargin * 100)}/${Math.round(settings.discMargin * 100)}`} className="py-1" />
           <Figure label="Our margin (Fresh / EOSS)" value={`${Math.round(settings.freshMargin * 100)}% / ${Math.round(settings.discMargin * 100)}%`} className="py-1" />
+          {settings.termChanges?.length ? (
+            <Figure
+              label="Terms changed"
+              value={settings.termChanges.map((c) => `from ${fmtDate(c.from)}: ${Math.round(c.freshMargin * 100)}% / ${Math.round(c.discMargin * 100)}%`).join("; ")}
+              className="py-1"
+            />
+          ) : null}
           {settings.marginSlabs.length ? (
             <Figure
               label="Margin by discount"
@@ -83,8 +90,10 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
           <p className="heading-meta text-foreground-lighter mb-1">Margin working — EOSS</p>
           <dl className="divide-y">
             <Figure label="Sale value (R.V.)" value={inr(m.rv)} />
+            {s.disc.flatDiscAmt ? <Figure label="(after flat discounts of)" value={inr(s.disc.flatDiscAmt)} muted /> : null}
             <Figure label="Less: GST in sale" value={inr(m.taxB2C)} muted />
             <Figure label="Net of tax" value={inr(m.not)} />
+            {m.cashback ? <Figure label="Less: cashback to customers" value={inr(m.cashback)} muted /> : null}
             <Figure label="Less: our margin" value={inr(m.dealer)} muted />
             <Figure label="Brand's share" value={inr(m.company)} />
             <Figure label="Add: GST" value={inr(m.gst)} muted />

@@ -19,7 +19,10 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyStatePresentational } from "@/components/ui-patterns/empty-state";
-import { fmtDate } from "@/components/app/fields";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogSection, DialogSectionSeparator, DialogTitle,
+} from "@/components/ui/dialog";
+import { FormField, NumberInput, fmtDate } from "@/components/app/fields";
 import { MARGIN_PRESETS } from "@/components/app/margin-select";
 import { Metric } from "@/components/app/metric";
 import { ImportDialog } from "@/components/app/import-dialog";
@@ -39,6 +42,8 @@ export default function SalesPage() {
   const [status, setStatus] = useState("open");
   const [margin, setMargin] = useState("all"); // all | brand | custom | <rate>
   const [gst, setGst] = useState("all"); // all | <rate>
+  const [offer, setOffer] = useState("all"); // all | flat | cashback | none
+  const [amounts, setAmounts] = useState<{ flatDisc: number | null; cashback: number | null } | null>(null);
   const [q, setQ] = useState("");
   const [limit, setLimit] = useState(PAGE);
   const [month, setMonth] = useState("all");
@@ -71,7 +76,10 @@ export default function SalesPage() {
 
   const rows = base
     .filter(({ row }) => margin === "all" || (margin === "brand" ? !row.marginCustom : margin === "custom" ? row.marginCustom : key(row.marginPct) === margin))
-    .filter(({ row }) => gst === "all" || key(row.gstRate) === gst);
+    .filter(({ row }) => gst === "all" || key(row.gstRate) === gst)
+    .filter(({ row }) =>
+      offer === "all" ? true : offer === "flat" ? row.flatDiscAmt !== 0 : offer === "cashback" ? row.cashbackAmt !== 0 : !row.flatDiscAmt && !row.cashbackAmt,
+    );
 
   if (!brand || !stats) {
     return (
@@ -166,6 +174,13 @@ export default function SalesPage() {
             <SelectSeparator />
             {gstRates.map((g) => <SelectItem key={g} value={g}>GST {pc(+g)} ({count((r) => key(r.gstRate) === g)})</SelectItem>)}
           </Filter>
+          <Filter value={offer} onChange={setOffer} width="w-44">
+            <SelectItem value="all">All offers</SelectItem>
+            <SelectSeparator />
+            <SelectItem value="flat">Flat discount ({count((r) => r.flatDiscAmt !== 0)})</SelectItem>
+            <SelectItem value="cashback">Cashback ({count((r) => r.cashbackAmt !== 0)})</SelectItem>
+            <SelectItem value="none">Neither ({count((r) => !r.flatDiscAmt && !r.cashbackAmt)})</SelectItem>
+          </Filter>
           <span className="ml-auto text-xs text-foreground-lighter">{rows.length} sales</span>
         </div>
 
@@ -194,6 +209,7 @@ export default function SalesPage() {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+            <Button variant="default" size="tiny" onClick={() => setAmounts({ flatDisc: null, cashback: null })}>Flat discount / cashback</Button>
             <Button variant="text" size="tiny" icon={<X size={14} strokeWidth={1.5} />} onClick={() => setSelected(new Set())}>Clear</Button>
           </div>
         ) : null}
@@ -260,7 +276,10 @@ export default function SalesPage() {
                     {inr(sale.mrp, 0)} × {sale.qty}
                     {sale.qty < 0 ? <span className="ml-1 text-xs text-destructive">return</span> : null}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-foreground-light">{pc(sale.disc)}</TableCell>
+                  <TableCell className="text-right tabular-nums whitespace-nowrap text-foreground-light">
+                    <div>{pc(sale.disc)}{row.flatDiscAmt ? ` + ₹ ${inr(row.flatDiscAmt, 0)}` : ""}</div>
+                    {row.cashbackAmt ? <div className="text-xs text-foreground-lighter">cashback ₹ {inr(row.cashbackAmt, 0)}</div> : null}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">{inr(row.realization)}</TableCell>
                   <TableCell className="text-right tabular-nums whitespace-nowrap text-foreground-light">
                     {pc(row.gstRate)}
@@ -342,6 +361,36 @@ export default function SalesPage() {
           ageing: [...new Set(stats.sales.map((s) => s.ageing).filter(Boolean))].sort(),
         }}
       />
+      <Dialog open={!!amounts} onOpenChange={(o) => !o && setAmounts(null)}>
+        <DialogContent size="small">
+          <DialogHeader>
+            <DialogTitle>Flat discount &amp; cashback</DialogTitle>
+            <DialogDescription>For each of the {picked.length} selected sales (whole line). Leave empty to remove.</DialogDescription>
+          </DialogHeader>
+          <DialogSectionSeparator />
+          <DialogSection className="flex flex-col gap-4">
+            <FormField label="Flat discount (₹)" htmlFor="b-flat" hint="Taken off the bill, lowers GST too">
+              <NumberInput id="b-flat" prefix="₹" allowEmpty placeholder="0" value={amounts?.flatDisc ?? null} onChange={(v) => setAmounts((a) => a && { ...a, flatDisc: v })} />
+            </FormField>
+            <FormField label="Cashback to customer (₹)" htmlFor="b-cash" hint="Paid after billing, lowers what you keep">
+              <NumberInput id="b-cash" prefix="₹" allowEmpty placeholder="0" value={amounts?.cashback ?? null} onChange={(v) => setAmounts((a) => a && { ...a, cashback: v })} />
+            </FormField>
+          </DialogSection>
+          <DialogFooter>
+            <Button variant="default" onClick={() => setAmounts(null)}>Cancel</Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                if (!amounts) return;
+                apply({ flatDisc: amounts.flatDisc || null, cashback: amounts.cashback || null }, "Flat discount and cashback set");
+                setAmounts(null);
+              }}
+            >
+              Apply to {picked.length} sales
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ImportDialog open={importing} onOpenChange={setImporting} brand={brand} settings={settings} />
     </Page>
   );

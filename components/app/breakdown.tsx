@@ -4,7 +4,7 @@ import { inr, type Row } from "@/lib/calc";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Figure } from "./fields";
+import { Figure, fmtDate } from "./fields";
 
 const pc = (n: number) => `${+(n * 100).toFixed(2)}%`;
 
@@ -23,12 +23,19 @@ export function Breakdown({ row, className }: { row: Row; className?: string }) 
         <p className="heading-meta text-foreground-lighter mb-1">Sale to customer</p>
         <dl className="divide-y">
           <Figure label={`MRP value (${inr(row.mrp, 0)} × ${row.qty})`} value={inr(row.mrpValue)} />
-          <Figure label={`Less discount ${pc(row.disc)}`} value={`− ${inr(row.discAmt)}`} muted />
+          <Figure label={`Less discount ${pc(row.disc)}`} value={`− ${inr(row.discAmt - row.flatDiscAmt)}`} muted />
+          {row.flatDiscAmt ? <Figure label="Less flat discount" value={`− ${inr(row.flatDiscAmt)}`} muted /> : null}
           <Figure label="Sale value" value={inr(row.realization)} emphasis />
           <Figure label={`Less GST included in sale (${pc(row.gstRate)} slab)`} value={`− ${inr(row.gstB2C)}`} muted />
           <Figure label="Sale value before GST" value={inr(notOfTax)} emphasis />
-          <Figure label={`Less your margin ${pc(row.marginPct)}${row.marginCustom ? " (custom)" : ""}`} value={`− ${inr(row.margin)}`} muted />
-          <Figure label="Brand's share" value={inr(notOfTax - row.margin)} emphasis />
+          {row.cashbackAmt ? (
+            <>
+              <Figure label="Less cashback to customer" value={`− ${inr(row.cashbackAmt)}`} muted />
+              <Figure label="What you keep" value={inr(notOfTax - row.cashbackAmt)} emphasis />
+            </>
+          ) : null}
+          <Figure label={`Less your margin ${pc(row.marginPct)}${row.marginCustom ? " (custom)" : row.termsFrom ? ` (terms from ${fmtDate(row.termsFrom)})` : ""}`} value={`− ${inr(row.margin)}`} muted />
+          <Figure label="Brand's share" value={inr(notOfTax - row.cashbackAmt - row.margin)} emphasis />
           <Figure label="Add GST on brand's bill" value={`+ ${inr(row.gstB2BValue)}`} muted />
           <Figure label="You should pay the brand" value={inr(row.netPayable)} emphasis />
         </dl>

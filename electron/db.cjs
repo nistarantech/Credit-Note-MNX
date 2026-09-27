@@ -4,7 +4,7 @@
 // brand → month → sales / purchases → claim.
 const { DatabaseSync } = require("node:sqlite");
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -58,6 +58,18 @@ CREATE TABLE IF NOT EXISTS margin_slabs (
 );
 CREATE INDEX IF NOT EXISTS margin_slabs_brand ON margin_slabs(brand_id);
 
+-- New terms agreed with a brand from a date on (the brands row holds the original terms).
+CREATE TABLE IF NOT EXISTS brand_term_changes (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  brand_id     TEXT NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+  from_date    TEXT NOT NULL,              -- applies to sales billed on/after this date
+  fresh_margin REAL NOT NULL,
+  disc_margin  REAL NOT NULL,
+  wsp_factor   REAL NOT NULL,
+  margin_slabs TEXT NOT NULL DEFAULT '[]'  -- JSON: [{type, upTo, margin}]
+);
+CREATE INDEX IF NOT EXISTS brand_term_changes_brand ON brand_term_changes(brand_id, from_date);
+
 -- Every Excel file imported, one row per brand + month + kind it contributed.
 CREATE TABLE IF NOT EXISTS imports (
   id          TEXT PRIMARY KEY,
@@ -109,6 +121,8 @@ CREATE TABLE IF NOT EXISTS sales (
   qty           REAL NOT NULL,
   wsp           REAL,                        -- per piece from invoice; NULL = MRP x WSP factor
   gst_b2b       REAL,                        -- override; NULL = slab
+  flat_disc     REAL,                        -- ₹ off the whole line on the bill
+  cashback      REAL,                        -- ₹ cashback to the customer on the whole line
   margin_override   REAL,                    -- custom margin for this sale; NULL = the brand's terms
   gst_rate_override REAL,                    -- GST rate in the sale price; NULL = rate history
   purchase_date     TEXT,                    -- brand's invoice date (picks the B-B GST rate)
@@ -163,6 +177,8 @@ SELECT
   SUM(CASE WHEN s.sale_type = 'DISC'  THEN s.qty ELSE 0 END) AS eoss_pieces,
   SUM(CASE WHEN s.sale_type = 'FRESH' THEN s.qty ELSE 0 END) AS fresh_pieces,
   ROUND(SUM(s.mrp_value), 2)                            AS mrp_value,
+  ROUND(SUM(COALESCE(s.flat_disc, 0)), 2)               AS flat_discount,
+  ROUND(SUM(COALESCE(s.cashback, 0)), 2)                AS cashback,
   ROUND(SUM(s.realization), 2)                          AS sale_value,
   ROUND(SUM(s.margin), 2)                               AS your_margin,
   SUM(CASE WHEN s.margin_override IS NOT NULL THEN 1 ELSE 0 END) AS custom_margin_lines,
@@ -184,7 +200,7 @@ const brandRow = (b) => ({
   wsp_factor: b.wspFactor, cn_base_pct: b.cnBasePct, dispatch_qty: b.dispatch.qty, dispatch_mrp: b.dispatch.mrp,
   dispatch_wsp: b.dispatch.wsp, dispatch_gst: b.dispatch.gst, active: b.active ? 1 : 0, memo: b.memo, created_at: b.createdAt,
 });
-const brandObj = (r, slabs) => ({
+const brandObj = (r, slabs, changes) => ({
   id: r.id, code: r.code, name: r.name, gstNo: r.gst_no, address: r.address, contactPerson: r.contact_person,
   phone: r.phone, season: r.season, applicability: r.applicability, conditions: r.conditions,
   firstSeason: r.first_season, dealName: r.deal_name, freshMargin: r.fresh_margin, discMargin: r.disc_margin,
@@ -192,12 +208,16 @@ const brandObj = (r, slabs) => ({
   dispatch: { qty: r.dispatch_qty, mrp: r.dispatch_mrp, wsp: r.dispatch_wsp, gst: r.dispatch_gst },
   active: !!r.active, memo: r.memo, createdAt: r.created_at,
   marginSlabs: slabs.map((m) => ({ type: m.sale_type, upTo: m.up_to, margin: m.margin })),
+  termChanges: changes.map((c) => ({
+    from: c.from_date, freshMargin: c.fresh_margin, discMargin: c.disc_margin, wspFactor: c.wsp_factor,
+    marginSlabs: JSON.parse(c.margin_slabs),
+  })),
 });
 
 const saleRow = (s) => ({
   id: s.id, brand_id: s.brandId, month: s.date.slice(0, 7), bill_date: s.date, bill_no: s.billNo, barcode: s.barcode,
   division: s.division, department: s.department, ageing: s.ageing, sale_type: s.type, disc: s.disc, mrp: s.mrp, qty: s.qty,
-  wsp: s.wsp, gst_b2b: s.gstB2B, margin_override: s.marginOverride ?? null, gst_rate_override: s.gstRateOverride ?? null,
+  wsp: s.wsp, gst_b2b: s.gstB2B, flat_disc: s.flatDisc ?? null, cashback: s.cashback ?? null, margin_override: s.marginOverride ?? null, gst_rate_override: s.gstRateOverride ?? null,
   purchase_date: s.purchaseDate ?? null, import_id: s.importId ?? null, claim_id: s.claimId,
   mrp_value: s.calc.mrpValue, realization: s.calc.realization, gst_rate: s.calc.gstRate, gst_b2c: s.calc.gstB2C,
   margin_pct: s.calc.marginPct, margin: s.calc.margin, net_payable: s.calc.netPayable, wsp_value: s.calc.wspValue,
@@ -206,7 +226,7 @@ const saleRow = (s) => ({
 const saleObj = (r) => ({
   id: r.id, brandId: r.brand_id, date: r.bill_date, billNo: r.bill_no, barcode: r.barcode, division: r.division,
   department: r.department, ageing: r.ageing, type: r.sale_type, disc: r.disc, mrp: r.mrp, qty: r.qty, wsp: r.wsp,
-  gstB2B: r.gst_b2b, marginOverride: r.margin_override, gstRateOverride: r.gst_rate_override,
+  gstB2B: r.gst_b2b, flatDisc: r.flat_disc, cashback: r.cashback, marginOverride: r.margin_override, gstRateOverride: r.gst_rate_override,
   purchaseDate: r.purchase_date, importId: r.import_id, claimId: r.claim_id,
 });
 
@@ -266,6 +286,8 @@ const ADDED_COLUMNS = [
   ["sales", "margin_override", "REAL"],
   ["sales", "gst_rate_override", "REAL"],
   ["sales", "purchase_date", "TEXT"],
+  ["sales", "flat_disc", "REAL"],
+  ["sales", "cashback", "REAL"],
 ];
 
 function migrate(db) {
@@ -288,10 +310,11 @@ function open(file) {
 
   function load() {
     const slabs = db.prepare("SELECT * FROM margin_slabs ORDER BY sale_type, up_to").all();
+    const changes = db.prepare("SELECT * FROM brand_term_changes ORDER BY from_date").all();
     const settings = Object.fromEntries(db.prepare("SELECT key, value FROM settings").all().map((r) => [r.key, JSON.parse(r.value)]));
     return {
       settings,
-      brands: db.prepare("SELECT * FROM brands ORDER BY name").all().map((r) => brandObj(r, slabs.filter((m) => m.brand_id === r.id))),
+      brands: db.prepare("SELECT * FROM brands ORDER BY name").all().map((r) => brandObj(r, slabs.filter((m) => m.brand_id === r.id), changes.filter((c) => c.brand_id === r.id))),
       imports: db.prepare("SELECT * FROM imports ORDER BY month DESC, imported_at DESC").all().map(importObj),
       claims: db.prepare("SELECT * FROM claims ORDER BY created_at DESC").all().map(claimObj),
       sales: db.prepare("SELECT * FROM sales ORDER BY bill_date, bill_no").all().map(saleObj),
@@ -325,6 +348,11 @@ function open(file) {
             prep("DELETE FROM margin_slabs WHERE brand_id = ?").run(obj.id);
             for (const m of obj.marginSlabs ?? []) {
               prep("INSERT INTO margin_slabs (brand_id, sale_type, up_to, margin) VALUES (?, ?, ?, ?)").run(obj.id, m.type, m.upTo, m.margin);
+            }
+            prep("DELETE FROM brand_term_changes WHERE brand_id = ?").run(obj.id);
+            for (const c of obj.termChanges ?? []) {
+              prep("INSERT INTO brand_term_changes (brand_id, from_date, fresh_margin, disc_margin, wsp_factor, margin_slabs) VALUES (?, ?, ?, ?, ?, ?)")
+                .run(obj.id, c.from, c.freshMargin, c.discMargin, c.wspFactor, JSON.stringify(c.marginSlabs ?? []));
             }
           }
         }

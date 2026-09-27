@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CalendarCheck, FileText } from "lucide-react";
-import { inr } from "@/lib/calc";
+import { inr, termsFor } from "@/lib/calc";
 import { monthEnd, monthLabel, monthRange, claimPayload, salesMonths, thisMonth, type BrandMonth } from "@/lib/month";
-import { useStore } from "@/lib/store";
+import { calcSettings, useStore } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -145,8 +145,18 @@ export default function MonthEndPage() {
                     {r.brand.code ? <div className="font-mono text-xs text-foreground-lighter">{r.brand.code}</div> : null}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-foreground-light">
-                    {Math.round(r.brand.discMargin * 100)}% / {Math.round(r.brand.freshMargin * 100)}%
-                    {r.brand.marginSlabs.length ? <span className="ml-1 text-xs text-foreground-lighter">+{r.brand.marginSlabs.length} slabs</span> : null}
+                    {(() => {
+                      // terms in force at the end of the month (a change mid-month shows as a note)
+                      const t = termsFor(to, calcSettings(data.globals, r.brand));
+                      const mid = r.brand.termChanges.some((c) => c.from > from && c.from <= to);
+                      return (
+                        <>
+                          {Math.round(t.discMargin * 100)}% / {Math.round(t.freshMargin * 100)}%
+                          {t.marginSlabs.length ? <span className="ml-1 text-xs text-foreground-lighter">+{t.marginSlabs.length} slabs</span> : null}
+                          {mid ? <div className="text-xs text-warning-600">Terms changed this month</div> : null}
+                        </>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{inr(r.total.disc.qty, 0)}</TableCell>
                   <TableCell className="text-right tabular-nums">{inr(r.total.fresh.qty, 0)}</TableCell>

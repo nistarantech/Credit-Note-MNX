@@ -18,7 +18,7 @@ if (!existsSync(FILE)) {
   process.exit(0);
 }
 const { default: readXlsx } = await import("read-excel-file/node");
-const { readSheet } = await import("./excel.ts");
+const { readSheet, readPaste } = await import("./excel.ts");
 const { DEFAULT_SETTINGS, summarize } = await import("./calc.ts");
 
 const sheets = (await readXlsx(readFileSync(FILE))) as { sheet: string; data: unknown[][] }[];
@@ -42,5 +42,11 @@ for (const { sheet, data } of sheets) {
     console.log(`  qty ${q}, gross ${g.toFixed(2)}`);
   }
 }
+// Flat discount and cashback columns (₹), and that "Disc (P)" style columns are not taken as flat discounts
+const pasted = readPaste("Bill Date\tMrp\tQty\tDisc %\tDisc (P)\tSlab\tFlat Discount\tCashback\n12-01-2026\t2999\t1\t50%\t1499.5\tDISC\t200\t100");
+const line = pasted?.sales[0];
+const amountsOk = line?.date === "2026-01-12" && line.disc === 0.5 && line.flatDisc === 200 && line.cashback === 100;
+console.log(`paste with flat discount + cashback: ${amountsOk ? "ok" : `BAD ${JSON.stringify(line)}`}`);
+ok &&= amountsOk;
 console.log(ok ? "OK" : "MISMATCH");
 process.exit(ok ? 0 : 1);

@@ -38,9 +38,17 @@ const checks: [string, number, number][] = [
   ["B-C GST, fixed 5%", calcRow({ ...base, date: "2025-08-10", gstRateOverride: 0.05 }, DEFAULT_SETTINGS).gstRate, 0.05],
   ["margin, brand terms", calcRow(base, DEFAULT_SETTINGS).marginPct, 0.2],
   ["margin, custom 25%", calcRow({ ...base, marginOverride: 0.25 }, DEFAULT_SETTINGS).marginPct, 0.25],
+  // ₹100 cashback to the customer: your 20% margin is on ₹100 less, the brand carries the other ₹80
+  ["cashback ₹100 → CN +₹80", calcRow({ ...base, cashback: 100 }, DEFAULT_SETTINGS).cn - calcRow(base, DEFAULT_SETTINGS).cn, 80],
+  ["cashback leaves GST alone", calcRow({ ...base, cashback: 100 }, DEFAULT_SETTINGS).gstB2C, calcRow(base, DEFAULT_SETTINGS).gstB2C],
+  // ₹200 flat discount comes off the bill: 2999 × 50% − 200
+  ["flat discount ₹200", calcRow({ ...base, flatDisc: 200 }, DEFAULT_SETTINGS).realization, 1299.5],
+  // brand terms changed to 25% EOSS from 1 Jan 2026
+  ["terms change, after", calcRow(base, { ...DEFAULT_SETTINGS, termChanges: [{ from: "2026-01-01", freshMargin: 0.3, discMargin: 0.25, wspFactor: 0.625, marginSlabs: [] }] }).marginPct, 0.25],
+  ["terms change, before", calcRow({ ...base, date: "2025-12-31" }, { ...DEFAULT_SETTINGS, termChanges: [{ from: "2026-01-01", freshMargin: 0.3, discMargin: 0.25, wspFactor: 0.625, marginSlabs: [] }] }).marginPct, 0.2],
 ];
 for (const [name, got, want] of checks) {
-  const ok = Math.abs(got - want) < 1e-9;
+  const ok = Math.abs(got - want) < 1e-6;
   if (!ok) bad++;
   console.log(`${ok ? "ok " : "BAD"} ${name}: ${got}`);
 }

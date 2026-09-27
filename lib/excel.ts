@@ -7,7 +7,7 @@ import type { Purchase } from "./store";
 export type Cell = string | number | boolean | Date | null | undefined;
 export type Kind = "sales" | "purchases";
 
-type SaleField = "date" | "billNo" | "barcode" | "division" | "department" | "ageing" | "discM" | "discP" | "disc" | "type" | "mrp" | "qty" | "wsp" | "gstB2B";
+type SaleField = "date" | "billNo" | "barcode" | "division" | "department" | "ageing" | "discM" | "discP" | "disc" | "type" | "mrp" | "qty" | "wsp" | "gstB2B" | "flatDisc" | "cashback";
 type BuyField = "date" | "invoiceNo" | "barcode" | "division" | "department" | "category" | "season" | "rate" | "mrp" | "qty" | "gross" | "tax" | "net";
 
 const key = (h: Cell) => String(h ?? "").toLowerCase().replace(/[^a-z0-9%()-]/g, "");
@@ -28,6 +28,9 @@ const SALE_HEADERS: [RegExp, SaleField][] = [
   [/^qty$|^quantity$/, "qty"],
   [/^wsp$/, "wsp"],
   [/^gst\(b-b\)$/, "gstB2B"],
+  // ₹ amounts. Not "Disc (P)" / "Disc (M)" — those are the % discount worked out in rupees.
+  [/^flatdisc|^flatdiscount|^discamt$|^discountamount$|^discount\(rs|^extradisc/, "flatDisc"],
+  [/^cashback/, "cashback"],
 ];
 
 const BUY_HEADERS: [RegExp, BuyField][] = [
@@ -127,10 +130,14 @@ function salesFrom(sheet: string, rows: Cell[][], h: number, map: Map<SaleField,
     const gstTotal = num(get(r, "gstB2B"));
     const gstB2B = isNaN(gstTotal) ? null : gstTotal;
 
+    const flat = num(get(r, "flatDisc"));
+    const cash = num(get(r, "cashback"));
     sales.push({
       id: uid(), date: d, billNo: str(get(r, "billNo")), barcode: str(get(r, "barcode")),
       division: str(get(r, "division")), department: str(get(r, "department")), ageing: str(get(r, "ageing")),
       type, disc, mrp, qty, wsp, gstB2B,
+      flatDisc: flat > 0 ? flat : null,
+      cashback: cash > 0 ? cash : null,
     });
   }
   return { sheet, kind: "sales", headerRow: h + 1, sales, purchases: [], skipped };

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { calcRow, inr, type Line, type MarginSlab } from "@/lib/calc";
+import { calcRow, inr, type Line, type MarginSlab, type Terms } from "@/lib/calc";
 import { calcSettings, newBrand, useStore, type Brand } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { FormField, NumberInput, today } from "./fields";
+import { FormField, NumberInput, dayAfter, dayBefore, fmtDate, today } from "./fields";
 import { DISCOUNT_PRESETS, MARGIN_PRESETS, PercentPicker } from "./margin-select";
 
 /** Add or edit a brand: details, the terms its credit claims use, and dispatch. */
@@ -23,17 +23,45 @@ export function BrandSheet({
   const { data, saveBrand, selectBrand } = useStore();
   const [p, setP] = useState<Brand>(() => brand ?? newBrand(data.globals));
   const [tab, setTab] = useState("details");
+  const [period, setPeriod] = useState("start"); // terms period being edited
   const [seen, setSeen] = useState({ open, brand });
   if (seen.open !== open || seen.brand !== brand) {
     setSeen({ open, brand });
     if (open) {
       setP(brand ?? newBrand(data.globals));
       setTab("details");
+      setPeriod("start");
     }
   }
   const set = (patch: Partial<Brand>) => setP((x) => ({ ...x, ...patch }));
   const setD = (k: keyof Brand["dispatch"], v: number | null) => setP((x) => ({ ...x, dispatch: { ...x.dispatch, [k]: v ?? 0 } }));
-  const setSlab = (i: number, patch: Partial<MarginSlab>) => set({ marginSlabs: p.marginSlabs.map((m, j) => (j === i ? { ...m, ...patch } : m)) });
+
+  // Terms periods: "start" edits the brand's original terms, a date edits the change from that date.
+  const sortedChanges = [...p.termChanges].sort((a, b) => a.from.localeCompare(b.from));
+  const change = p.termChanges.find((c) => c.from === period);
+  const t: Terms = change ?? p;
+  const setT = (patch: Partial<Terms>) =>
+    change ? set({ termChanges: p.termChanges.map((c) => (c.from === period ? { ...c, ...patch } : c)) }) : set(patch);
+  const setSlab = (i: number, patch: Partial<MarginSlab>) => setT({ marginSlabs: t.marginSlabs.map((m, j) => (j === i ? { ...m, ...patch } : m)) });
+  const addChange = () => {
+    // starts from the latest terms, on the 1st of next month (or the day after the last change)
+    const last = sortedChanges[sortedChanges.length - 1];
+    const base: Terms = last ?? p;
+    const now = new Date();
+    let from = new Date(now.getFullYear(), now.getMonth() + 1, 1, 12).toISOString().slice(0, 10);
+    while (p.termChanges.some((c) => c.from === from) || (last && from <= last.from)) from = dayAfter(last ? last.from : from);
+    set({ termChanges: [...p.termChanges, { from, freshMargin: base.freshMargin, discMargin: base.discMargin, wspFactor: base.wspFactor, marginSlabs: base.marginSlabs }] });
+    setPeriod(from);
+  };
+  const moveChange = (from: string, to: string) => {
+    if (p.termChanges.some((c) => c.from === to)) return;
+    set({ termChanges: p.termChanges.map((c) => (c.from === from ? { ...c, from: to } : c)) });
+    setPeriod(to);
+  };
+  const removeChange = (from: string) => {
+    set({ termChanges: p.termChanges.filter((c) => c.from !== from) });
+    setPeriod("start");
+  };
   const isNew = !brand;
   const bought = data.purchases.filter((x) => x.brandId === p.id).length;
 
@@ -99,12 +127,42 @@ export function BrandSheet({
             </TabsContent>
 
             <TabsContent value="terms" className="mt-6 flex flex-col gap-6">
+              <div className="flex flex-col gap-2 rounded-md border bg-surface-75 px-4 py-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <FormField label="Terms period" htmlFor="p-period" className="min-w-56 flex-1">
+                    <Select value={period} onValueChange={setPeriod}>
+                      <SelectTrigger id="p-period" size="small"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="start">{p.termChanges.length ? `From the start, until ${fmtDate(dayBefore(sortedChanges[0].from))}` : "From the start (all sales)"}</SelectItem>
+                        {sortedChanges.map((c, i) => (
+                          <SelectItem key={c.from} value={c.from}>
+                            From {fmtDate(c.from)}{sortedChanges[i + 1] ? ` until ${fmtDate(dayBefore(sortedChanges[i + 1].from))}` : " onwards"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  {period !== "start" ? (
+                    <FormField label="Starts on" htmlFor="p-from">
+                      <Input id="p-from" type="date" value={period} onChange={(e) => e.target.value && moveChange(period, e.target.value)} />
+                    </FormField>
+                  ) : null}
+                  <Button variant="default" icon={<Plus size={14} strokeWidth={1.5} />} onClick={addChange}>New terms from a date</Button>
+                  {period !== "start" ? (
+                    <Button variant="text" icon={<Trash2 size={14} strokeWidth={1.5} />} onClick={() => removeChange(period)}>Remove</Button>
+                  ) : null}
+                </div>
+                <p className="text-xs text-foreground-lighter">
+                  Each sale uses the terms in force on its bill date. Changing terms here recalculates unclaimed sales; claims already raised keep the terms they used.
+                </p>
+              </div>
+
               <div className="grid grid-cols-3 gap-4">
                 <FormField label="Your EOSS margin" htmlFor="p-disc" hint="Base, on discounted sales">
-                  <PercentPicker id="p-disc" presets={MARGIN_PRESETS} value={p.discMargin} onChange={(v) => set({ discMargin: v ?? 0 })} />
+                  <PercentPicker id="p-disc" presets={MARGIN_PRESETS} value={t.discMargin} onChange={(v) => setT({ discMargin: v ?? 0 })} />
                 </FormField>
                 <FormField label="Your fresh margin" htmlFor="p-fresh" hint="Base, on full-price sales">
-                  <PercentPicker id="p-fresh" presets={MARGIN_PRESETS} value={p.freshMargin} onChange={(v) => set({ freshMargin: v ?? 0 })} />
+                  <PercentPicker id="p-fresh" presets={MARGIN_PRESETS} value={t.freshMargin} onChange={(v) => setT({ freshMargin: v ?? 0 })} />
                 </FormField>
                 <FormField label="Deal name" htmlFor="p-deal" hint="Printed on the claim">
                   <Input id="p-deal" value={p.dealName} onChange={(e) => set({ dealName: e.target.value })} placeholder="30/20/10" />
@@ -118,7 +176,7 @@ export function BrandSheet({
                     Optional. A sale discounted up to the level gets that margin instead of the base margin — e.g. EOSS up to 30% → 20%, up to 60% → 10%.
                   </p>
                 </div>
-                {p.marginSlabs.length ? (
+                {t.marginSlabs.length ? (
                   <div className="rounded-md border">
                     <Table>
                       <TableHeader>
@@ -130,7 +188,7 @@ export function BrandSheet({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {p.marginSlabs.map((m, i) => (
+                        {t.marginSlabs.map((m, i) => (
                           <TableRow key={i}>
                             <TableCell>
                               <Select value={m.type} onValueChange={(v) => setSlab(i, { type: v as MarginSlab["type"] })}>
@@ -145,7 +203,7 @@ export function BrandSheet({
                             <TableCell><PercentPicker presets={MARGIN_PRESETS} value={m.margin} onChange={(v) => setSlab(i, { margin: v ?? 0 })} /></TableCell>
                             <TableCell>
                               <Button variant="text" size="tiny" className="h-7 w-7 px-0" icon={<Trash2 size={14} strokeWidth={1.5} />} aria-label="Remove slab"
-                                onClick={() => set({ marginSlabs: p.marginSlabs.filter((_, j) => j !== i) })} />
+                                onClick={() => setT({ marginSlabs: t.marginSlabs.filter((_, j) => j !== i) })} />
                             </TableCell>
                           </TableRow>
                         ))}
@@ -154,14 +212,14 @@ export function BrandSheet({
                   </div>
                 ) : null}
                 <Button variant="default" className="w-fit" icon={<Plus size={14} strokeWidth={1.5} />}
-                  onClick={() => set({ marginSlabs: [...p.marginSlabs, { type: "DISC", upTo: 0.5, margin: p.discMargin }] })}>
+                  onClick={() => setT({ marginSlabs: [...t.marginSlabs, { type: "DISC", upTo: 0.5, margin: t.discMargin }] })}>
                   Add margin slab
                 </Button>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <FormField label="WSP factor" htmlFor="p-wsp" hint={`Purchase rate = MRP × ${p.wspFactor} (MRP ÷ ${(1 / (p.wspFactor || 1)).toFixed(3)})`}>
-                  <NumberInput id="p-wsp" value={p.wspFactor} onChange={(v) => set({ wspFactor: v ?? 0 })} />
+                <FormField label="WSP factor" htmlFor="p-wsp" hint={`Purchase rate = MRP × ${t.wspFactor} (MRP ÷ ${(1 / (t.wspFactor || 1)).toFixed(3)})`}>
+                  <NumberInput id="p-wsp" value={t.wspFactor} onChange={(v) => setT({ wspFactor: v ?? 0 })} />
                 </FormField>
                 <FormField
                   label="CN % base"
