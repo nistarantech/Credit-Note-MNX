@@ -8,8 +8,9 @@
     "test": "node --experimental-strip-types lib/calc.test.ts && node --experimental-strip-types lib/excel.test.ts",
     "desktop": "next build && electron .",
     "desktop:dev": "ELECTRON_START_URL=http://localhost:3210 electron .",
-    "dist:mac": "next build && electron-builder --mac",
-    "dist:win": "next build && electron-builder --win"
+    "dist:mac": "next build && electron-builder --mac --x64 --arm64 --publish never",
+    "dist:win": "next build && electron-builder --win --x64 --publish never",
+    "dist:linux": "next build && electron-builder --linux --x64 --publish never"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -35,7 +36,7 @@
     "typescript": "^7.0.2"
   },
   "type": "module",
-  "description": "EOSS credit note calculator \u2014 desktop app",
+  "description": "EOSS credit note calculator — desktop app",
   "author": "darshankochar22",
   "main": "electron/main.cjs",
   "build": {
@@ -59,6 +60,17 @@
       "target": [
         "nsis"
       ]
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office"
     }
   }
 }
