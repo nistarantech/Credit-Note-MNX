@@ -5,8 +5,8 @@ import { StoreProvider } from "@/lib/store";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Credit Note",
-  description: "EOSS credit note working — sale, margin, GST and credit note per party",
+  title: "CN Claims",
+  description: "Work out and track the credit notes you claim from each brand",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

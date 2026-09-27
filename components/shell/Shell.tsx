@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 import {
-  Building2, CalendarCheck, Calculator, Check, ChevronsUpDown, FileText, LayoutDashboard, Menu, Monitor, Moon,
+  Building2, CalendarCheck, Calculator, Check, FolderInput, ChevronsUpDown, FileText, LayoutDashboard, Menu, Monitor, Moon,
   PanelLeftClose, PanelLeftOpen, Plus, ReceiptText, Settings, Sigma, Sun,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -22,10 +22,11 @@ import { useStoredFlag } from "./use-stored-flag";
 const NAV = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/calculator/", label: "Quick calculator", icon: Calculator },
-  { href: "/parties/", label: "Parties", icon: Building2 },
+  { href: "/brands/", label: "Brands", icon: Building2 },
   { href: "/sales/", label: "Sales", icon: ReceiptText },
+  { href: "/imports/", label: "Imports", icon: FolderInput },
   { href: "/month-end/", label: "Month-end", icon: CalendarCheck },
-  { href: "/credit-notes/", label: "Credit notes", icon: FileText },
+  { href: "/claims/", label: "Claims", icon: FileText },
   { href: "/settings/", label: "Settings", icon: Settings, divider: true },
   { href: "/formulas/", label: "How it's calculated", icon: Sigma },
 ];
@@ -44,7 +45,7 @@ function Slash() {
 }
 
 /**
- * Studio-style chrome: a top bar (party switcher / screen) and one sidebar
+ * Studio-style chrome: a top bar (brand switcher / screen) and one sidebar
  * that collapses to an icon rail. Screens render inside `.app-content`.
  */
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -74,11 +75,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-400 dark:bg-brand-500 border border-brand-500/75 dark:border-brand/30">
             <FileText size={13} strokeWidth={2} />
           </span>
-          <span className="text-sm font-medium">Credit Note</span>
+          <span className="text-sm font-medium">CN Claims</span>
         </Link>
         <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
           <span className="hidden lg:inline-flex"><Slash /></span>
-          <PartySwitcher />
+          <BrandSwitcher />
           <Slash />
           <span className="truncate text-foreground" aria-current="page">{current?.label ?? "Screen"}</span>
         </nav>
@@ -115,7 +116,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-64 p-2 bg-dash-sidebar">
-          <SheetTitle className="px-3 py-2 text-sm">Credit Note</SheetTitle>
+          <SheetTitle className="px-3 py-2 text-sm">CN Claims</SheetTitle>
           <NavList pathname={pathname} collapsed={false} />
         </SheetContent>
       </Sheet>
@@ -163,8 +164,8 @@ function NavList({ pathname, collapsed }: { pathname: string; collapsed: boolean
   );
 }
 
-function PartySwitcher() {
-  const { data, party, selectParty } = useStore();
+function BrandSwitcher() {
+  const { data, brand, selectBrand } = useStore();
   const router = useRouter();
   return (
     <DropdownMenu>
@@ -174,22 +175,22 @@ function PartySwitcher() {
           className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-foreground-light transition-colors hover:bg-surface-200 hover:text-foreground focus-ring"
         >
           <Building2 size={14} strokeWidth={1.5} className="shrink-0 text-foreground-lighter" />
-          <span className="max-w-[16rem] truncate">{party?.name || "Select party"}</span>
+          <span className="max-w-[16rem] truncate">{brand?.name || "Select brand"}</span>
           <ChevronsUpDown size={12} strokeWidth={1.5} className="shrink-0 text-foreground-lighter" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72">
-        <DropdownMenuLabel>Parties</DropdownMenuLabel>
-        {data.parties.length === 0 && <div className="px-2 py-1.5 text-xs text-foreground-lighter">No parties yet</div>}
-        {data.parties.map((p) => (
-          <DropdownMenuItem key={p.id} onSelect={() => selectParty(p.id)} className="gap-2">
-            <span className="flex-1 truncate">{p.name || "Untitled party"}</span>
-            {p.id === party?.id && <Check size={14} strokeWidth={1.5} />}
+        <DropdownMenuLabel>Brands</DropdownMenuLabel>
+        {data.brands.length === 0 && <div className="px-2 py-1.5 text-xs text-foreground-lighter">No brands yet</div>}
+        {data.brands.map((p) => (
+          <DropdownMenuItem key={p.id} onSelect={() => selectBrand(p.id)} className="gap-2">
+            <span className="flex-1 truncate">{p.name || "Untitled brand"}</span>
+            {p.id === brand?.id && <Check size={14} strokeWidth={1.5} />}
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => router.push("/parties/?new=1")} className="gap-2">
-          <Plus size={14} strokeWidth={1.5} /> New party
+        <DropdownMenuItem onSelect={() => router.push("/brands/?new=1")} className="gap-2">
+          <Plus size={14} strokeWidth={1.5} /> New brand
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3210",
     "build": "next build",
-    "test": "node --experimental-strip-types lib/calc.test.ts",
+    "test": "node --experimental-strip-types lib/calc.test.ts && node --experimental-strip-types lib/excel.test.ts",
     "desktop": "next build && electron .",
     "desktop:dev": "ELECTRON_START_URL=http://localhost:3210 electron .",
     "dist:mac": "next build && electron-builder --mac",
@@ -27,6 +27,7 @@
     "radix-ui": "^1.6.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "read-excel-file": "^9.3.10",
     "sonner": "^1.7.4",
     "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.3",
@@ -34,7 +35,7 @@
     "typescript": "^7.0.2"
   },
   "type": "module",
-  "description": "EOSS credit note calculator — desktop app",
+  "description": "EOSS credit note calculator \u2014 desktop app",
   "author": "darshankochar22",
   "main": "electron/main.cjs",
   "build": {

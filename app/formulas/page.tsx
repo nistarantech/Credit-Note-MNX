@@ -9,8 +9,8 @@ import { Admonition } from "@/components/ui-patterns/admonition";
 import { Page } from "@/components/app/page";
 
 export default function FormulasPage() {
-  const { data, party } = useStore();
-  const s = calcSettings(data.globals, party);
+  const { data, brand } = useStore();
+  const s = calcSettings(data.globals, brand);
   const ex = calcRow(sampleLines()[0], s);
   const f = (n: number) => inr(n);
 
@@ -20,11 +20,11 @@ export default function FormulasPage() {
     ["Q", "Sale value (realization)", "MRP value − discount", `${f(ex.mrpValue)} − ${f(ex.discAmt)} = ${f(ex.realization)}`],
     ["S", "GST factor in sale", "rate ÷ (1 + rate)", `${pctStr(ex.gstRate, 0)} → ${ex.gstFactor}`],
     ["R", "GST in sale (B-C)", "Sale value × GST factor", `${f(ex.realization)} × ${ex.gstFactor} = ${f(ex.gstB2C)}`],
-    ["T", "Dealer margin", "(Sale value − GST in sale) × margin %", `${f(ex.realization - ex.gstB2C)} × ${pctStr(ex.marginPct, 0)} = ${f(ex.margin)}`],
-    ["W", "WSP (company bill)", `MRP × ${s.wspFactor} × Qty, or invoice rate × Qty`, f(ex.wspValue)],
-    ["X", "GST on company bill (B-B)", `WSP × ${pctStr(s.b2b.low, 0)} up to ₹ ${s.b2b.threshold} / pc, else ${pctStr(s.b2b.high, 0)}`, f(ex.gstB2BValue)],
-    ["U", "Party should pay company", "Sale value − GST in sale − margin + GST on bill", `${f(ex.realization)} − ${f(ex.gstB2C)} − ${f(ex.margin)} + ${f(ex.gstB2BValue)} = ${f(ex.netPayable)}`],
-    ["V", "Credit note", "(WSP + GST on bill) − party should pay", `${f(ex.wspValue + ex.gstB2BValue)} − ${f(ex.netPayable)} = ${f(ex.cn)}`],
+    ["T", "Your margin", "(Sale value − GST in sale) × margin %", `${f(ex.realization - ex.gstB2C)} × ${pctStr(ex.marginPct, 0)} = ${f(ex.margin)}`],
+    ["W", "WSP (brand's bill to you)", `MRP × ${s.wspFactor} × Qty, or invoice rate × Qty`, f(ex.wspValue)],
+    ["X", "GST on brand's bill (B-B)", `WSP × ${pctStr(s.b2b.low, 0)} up to ₹ ${s.b2b.threshold} / pc, else ${pctStr(s.b2b.high, 0)}`, f(ex.gstB2BValue)],
+    ["U", "You should pay the brand", "Sale value − GST in sale − margin + GST on bill", `${f(ex.realization)} − ${f(ex.gstB2C)} − ${f(ex.margin)} + ${f(ex.gstB2BValue)} = ${f(ex.netPayable)}`],
+    ["V", "Credit note to claim", "(WSP + GST on bill) − you should pay", `${f(ex.wspValue + ex.gstB2BValue)} − ${f(ex.netPayable)} = ${f(ex.cn)}`],
   ];
 
   return (
@@ -32,7 +32,7 @@ export default function FormulasPage() {
       <Card>
         <CardHeader>
           <CardTitle>Per sale</CardTitle>
-          <CardDescription>Example: MRP {inr(ex.mrp, 0)}, {pctStr(ex.disc, 0)} off, EOSS, sold {ex.date}{party ? `, ${party.name}'s deal` : ""}.</CardDescription>
+          <CardDescription>Example: MRP {inr(ex.mrp, 0)}, {pctStr(ex.disc, 0)} off, EOSS, sold {ex.date}{brand ? `, ${brand.name}'s deal` : ""}.</CardDescription>
         </CardHeader>
         <Table>
           <TableHeader>
@@ -58,16 +58,16 @@ export default function FormulasPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Per credit note</CardTitle>
+          <CardTitle>Per claim</CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="flex flex-col gap-2 text-sm text-foreground-light list-disc pl-5">
-            <li><span className="text-foreground">Billed by company</span> = WSP + GST on bill, of all EOSS sales</li>
-            <li><span className="text-foreground">Net receivable</span> = sale value − GST in sale − dealer margin + GST on bill, of all EOSS sales</li>
+            <li><span className="text-foreground">Billed to you by the brand</span> = WSP + GST on bill, of all EOSS sales</li>
+            <li><span className="text-foreground">Payable to brand</span> = sale value − GST in sale − your margin + GST on bill, of all EOSS sales</li>
             <li><span className="text-foreground">Credit on EOSS</span> = billed − net receivable</li>
             <li><span className="text-foreground">Credit on fresh</span> = sum of the credit of each fresh sale (close to zero when the fresh margin matches the WSP discount)</li>
-            <li><span className="text-foreground">Credit note amount</span> = credit on EOSS + credit on fresh</li>
-            <li><span className="text-foreground">CN % of MRP</span> = amount ÷ (dispatch MRP × {Math.round(s.cnBasePct * 100)}%)</li>
+            <li><span className="text-foreground">Credit note claimed</span> = credit on EOSS + credit on fresh</li>
+            <li><span className="text-foreground">CN % of MRP</span> = amount ÷ (MRP received from brand × {Math.round(s.cnBasePct * 100)}%)</li>
           </ul>
         </CardContent>
       </Card>

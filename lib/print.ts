@@ -1,10 +1,6 @@
 "use client";
 
-declare global {
-  interface Window {
-    desktop?: { platform: string; savePdf: (fileName: string) => Promise<string | null> };
-  }
-}
+import "./persist"; // declares window.desktop
 
 /**
  * Print (browser) or save as PDF (desktop app). Paper is always printed with

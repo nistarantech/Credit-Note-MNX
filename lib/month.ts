@@ -1,5 +1,5 @@
 import { summarize, type Summary } from "./calc";
-import { calcSettings, type CreditNote, type Data, type Party, type Sale } from "./store";
+import { calcSettings, type Brand, type Claim, type ClaimDraft, type Data, type Sale } from "./store";
 
 /** "2025-09-14" → "2025-09" */
 export const monthOf = (date: string) => date.slice(0, 7);
@@ -30,47 +30,47 @@ export function salesMonths(sales: Sale[]) {
   return [...new Set(sales.map((s) => monthOf(s.date)).filter(Boolean))].sort().reverse();
 }
 
-export interface PartyMonth {
-  party: Party;
-  sales: Sale[]; // all of the party's sales dated in the month
-  open: Sale[]; // those not yet settled
-  notes: CreditNote[]; // notes that settled any of this month's sales
-  pending: Summary; // the credit note the open sales would make
-  total: Summary; // the month as a whole, settled or not
+export interface BrandMonth {
+  brand: Brand;
+  sales: Sale[]; // all of the brand's sales dated in the month
+  open: Sale[]; // those not yet in a claim
+  claims: Claim[]; // claims covering any of this month's sales
+  pending: Summary; // the credit note the unclaimed sales are worth
+  total: Summary; // the month as a whole, claimed or not
 }
 
-/** The month-end position of every party: what is settled, what is still due. */
-export function monthEnd(d: Data, month: string): PartyMonth[] {
-  return d.parties.map((party) => {
-    const s = calcSettings(d.globals, party);
-    const sales = d.sales.filter((x) => x.partyId === party.id && monthOf(x.date) === month);
-    const open = sales.filter((x) => !x.noteId);
-    const noteIds = new Set(sales.map((x) => x.noteId).filter(Boolean));
+/** The month-end position of every brand: what is claimed, what is still to claim. */
+export function monthEnd(d: Data, month: string): BrandMonth[] {
+  return d.brands.map((brand) => {
+    const s = calcSettings(d.globals, brand);
+    const sales = d.sales.filter((x) => x.brandId === brand.id && monthOf(x.date) === month);
+    const open = sales.filter((x) => !x.claimId);
+    const claimIds = new Set(sales.map((x) => x.claimId).filter(Boolean));
     return {
-      party,
+      brand,
       sales,
       open,
-      notes: d.notes.filter((n) => noteIds.has(n.id)),
+      claims: d.claims.filter((n) => claimIds.has(n.id)),
       pending: summarize(open, s),
       total: summarize(sales, s),
     };
   });
 }
 
-/** What issueNote needs to settle `sales` for `party` as one credit note. */
-export function notePayload(
+/** What raiseClaim needs to claim `sales` from `brand` in one claim. */
+export function claimPayload(
   d: Data,
-  party: Party,
+  brand: Brand,
   sales: Sale[],
   opts: { date: string; from: string; to: string; month: string | null; remarks: string },
-): Omit<CreditNote, "id" | "number" | "createdAt"> {
-  const settings = calcSettings(d.globals, party);
+): ClaimDraft {
+  const settings = calcSettings(d.globals, brand);
   return {
     ...opts,
-    partyId: party.id,
-    party,
+    brandId: brand.id,
+    brand,
     settings,
-    lines: sales.map(({ partyId: _p, noteId: _n, ...l }) => l),
+    lines: sales.map(({ brandId: _p, claimId: _n, ...l }) => l),
     total: summarize(sales, settings).totalCn,
   };
 }

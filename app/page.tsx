@@ -2,45 +2,46 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Building2, Calculator, FileSpreadsheet, FileText } from "lucide-react";
+import { ArrowRight, Building2, CalendarCheck, Calculator, FileSpreadsheet, FileText } from "lucide-react";
 import { inr } from "@/lib/calc";
 import { useStore } from "@/lib/store";
-import { partyStats } from "@/lib/stats";
+import { brandStats } from "@/lib/stats";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ClaimStatus } from "@/components/app/claim-status";
 import { fmtDate } from "@/components/app/fields";
 import { Metric } from "@/components/app/metric";
 import { Page } from "@/components/app/page";
 
 const STEPS = [
-  { icon: Building2, title: "Add a party", text: "The retailer, their GSTIN and the deal — EOSS and fresh margins.", href: "/parties/?new=1", cta: "New party" },
-  { icon: FileSpreadsheet, title: "Enter their sales", text: "Type each sale in, or paste the rows straight from your Excel sheet.", href: "/sales/", cta: "Open sales" },
-  { icon: FileText, title: "Issue the credit note", text: "Pick the period; the note works out billing, margin, GST and the amount.", href: "/credit-notes/", cta: "Credit notes" },
+  { icon: Building2, title: "Add your brands", text: "Each brand you buy from, with the terms agreed — your fresh and EOSS margins, discount slabs, WSP.", href: "/brands/?new=1", cta: "New brand" },
+  { icon: FileSpreadsheet, title: "Enter your sales", text: "Your sales of each brand's goods — typed in, or pasted straight from your Excel sheet.", href: "/sales/", cta: "Open sales" },
+  { icon: CalendarCheck, title: "Claim at month-end", text: "See the credit note due from every brand for the month and raise the claims in one go.", href: "/month-end/", cta: "Month-end" },
 ];
 
 export default function Overview() {
-  const { data, selectParty } = useStore();
+  const { data, selectBrand } = useStore();
   const router = useRouter();
-  const perParty = data.parties.map((p) => ({ p, s: partyStats(data, p) }));
-  const due = perParty.reduce((a, x) => a + x.s.pending.totalCn, 0);
-  const openPcs = perParty.reduce((a, x) => a + x.s.pending.all.qty, 0);
-  const issued = data.notes.reduce((a, n) => a + n.total, 0);
+  const perBrand = data.brands.map((b) => ({ b, s: brandStats(data, b) }));
+  const toClaim = perBrand.reduce((a, x) => a + x.s.pending.totalCn, 0);
+  const awaiting = data.claims.filter((c) => c.status === "raised");
+  const received = data.claims.reduce((a, c) => a + (c.received?.amount ?? 0), 0);
 
   return (
     <Page
       title="Overview"
-      description="Credit notes due and issued across all parties."
+      description="Credit notes to claim from your brands, and what they still owe you."
       actions={<Button variant="default" icon={<Calculator size={14} strokeWidth={1.5} />} asChild><Link href="/calculator/">Quick calculator</Link></Button>}
     >
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <Metric label="Parties" value={String(data.parties.length)} />
-        <Metric label="Open sales" value={`${inr(openPcs, 0)} pcs`} tooltip="Sales not yet settled in a credit note" />
-        <Metric label="Credit due" value={`₹ ${inr(due)}`} tooltip="What open sales would credit if settled today" strong />
-        <Metric label="Credit notes issued" value={`₹ ${inr(issued)}`} tooltip={`${data.notes.length} notes`} />
+        <Metric label="Brands" value={String(data.brands.length)} />
+        <Metric label="Not yet claimed" value={`₹ ${inr(toClaim)}`} tooltip="Credit notes your unclaimed sales are worth" strong />
+        <Metric label="Awaiting from brands" value={`₹ ${inr(awaiting.reduce((a, c) => a + c.total, 0))}`} tooltip={`${awaiting.length} claims without a credit note yet`} />
+        <Metric label="Credit notes received" value={`₹ ${inr(received)}`} />
       </div>
 
-      {data.parties.length === 0 ? (
+      {data.brands.length === 0 ? (
         <div className="grid gap-4 md:grid-cols-3">
           {STEPS.map(({ icon: Icon, title, text, href, cta }, i) => (
             <Card key={title}>
@@ -60,22 +61,22 @@ export default function Overview() {
         <div className="grid gap-6 xl:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Credit due by party</CardTitle>
-              <CardDescription>Open sales waiting for a credit note.</CardDescription>
+              <CardTitle>To claim, by brand</CardTitle>
+              <CardDescription>Your sales not yet in a claim.</CardDescription>
             </CardHeader>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Party</TableHead>
-                  <TableHead className="text-right">Open sales</TableHead>
-                  <TableHead className="text-right">Credit due</TableHead>
+                  <TableHead>Brand</TableHead>
+                  <TableHead className="text-right">Unclaimed sales</TableHead>
+                  <TableHead className="text-right">CN to claim</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {perParty.map(({ p, s }) => (
-                  <TableRow key={p.id} className="cursor-pointer" onClick={() => { selectParty(p.id); router.push("/sales/"); }}>
-                    <TableCell className="text-foreground">{p.name}</TableCell>
+                {perBrand.map(({ b, s }) => (
+                  <TableRow key={b.id} className="cursor-pointer" onClick={() => { selectBrand(b.id); router.push("/sales/"); }}>
+                    <TableCell className="text-foreground">{b.name}</TableCell>
                     <TableCell className="text-right tabular-nums">{s.open.length}</TableCell>
                     <TableCell className="text-right tabular-nums text-foreground">₹ {inr(s.pending.totalCn)}</TableCell>
                     <TableCell><ArrowRight size={14} strokeWidth={1.5} className="text-foreground-lighter" /></TableCell>
@@ -83,37 +84,46 @@ export default function Overview() {
                 ))}
               </TableBody>
             </Table>
+            <CardContent className="flex justify-end">
+              <Button variant="default" icon={<CalendarCheck size={14} strokeWidth={1.5} />} asChild><Link href="/month-end/">Month-end</Link></Button>
+            </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Recent credit notes</CardTitle>
-              <CardDescription>The last notes issued.</CardDescription>
+              <CardTitle>Recent claims</CardTitle>
+              <CardDescription>And whether the brand has sent its credit note.</CardDescription>
             </CardHeader>
-            {data.notes.length === 0 ? (
-              <CardContent className="py-10 text-center text-sm text-foreground-lighter">No credit notes issued yet.</CardContent>
+            {data.claims.length === 0 ? (
+              <CardContent className="py-10 text-center text-sm text-foreground-lighter">No claims raised yet.</CardContent>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Number</TableHead>
-                    <TableHead>Party</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Claim</TableHead>
+                    <TableHead>Brand</TableHead>
+                    <TableHead className="text-right">Claimed</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.notes.slice(0, 8).map((n) => (
-                    <TableRow key={n.id} className="cursor-pointer" onClick={() => router.push("/credit-notes/")}>
-                      <TableCell className="font-mono text-xs text-foreground">{n.number}</TableCell>
-                      <TableCell className="truncate">{n.party.name}</TableCell>
-                      <TableCell className="text-foreground-light whitespace-nowrap">{fmtDate(n.date)}</TableCell>
-                      <TableCell className="text-right tabular-nums">₹ {inr(n.total)}</TableCell>
+                  {data.claims.slice(0, 8).map((c) => (
+                    <TableRow key={c.id} className="cursor-pointer" onClick={() => router.push(`/claims/?view=${c.id}`)}>
+                      <TableCell>
+                        <div className="font-mono text-xs text-foreground">{c.number}</div>
+                        <div className="text-xs text-foreground-lighter">{fmtDate(c.date)}</div>
+                      </TableCell>
+                      <TableCell className="truncate">{c.brand.name}</TableCell>
+                      <TableCell className="text-right tabular-nums">₹ {inr(c.total)}</TableCell>
+                      <TableCell><ClaimStatus c={c} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             )}
+            <CardContent className="flex justify-end">
+              <Button variant="default" icon={<FileText size={14} strokeWidth={1.5} />} asChild><Link href="/claims/">All claims</Link></Button>
+            </CardContent>
           </Card>
         </div>
       )}

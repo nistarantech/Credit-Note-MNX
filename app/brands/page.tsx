@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Building2, MoreHorizontal, Pencil, Plus, ReceiptText, Trash2 } from "lucide-react";
 import { inr } from "@/lib/calc";
-import { newParty, useStore, type Party } from "@/lib/store";
-import { partyStats } from "@/lib/stats";
-import { SAMPLE_PARTY, sampleLines } from "@/lib/sample";
+import { newBrand, useStore, type Brand } from "@/lib/store";
+import { brandStats } from "@/lib/stats";
+import { SAMPLE_BRAND, sampleLines } from "@/lib/sample";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,22 +21,22 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyStatePresentational } from "@/components/ui-patterns/empty-state";
 import { Page } from "@/components/app/page";
-import { PartySheet } from "@/components/app/party-sheet";
+import { BrandSheet } from "@/components/app/brand-sheet";
 
 export default function PartiesPage() {
   const store = useStore();
-  const { data, party: current, selectParty, deleteParty, saveParty, addSales } = store;
+  const { data, brand: current, selectBrand, deleteBrand, saveBrand, addSales, setGlobals } = store;
   const router = useRouter();
-  const [editing, setEditing] = useState<Party | null>(null);
+  const [editing, setEditing] = useState<Brand | null>(null);
   const [open, setOpen] = useState(false);
-  const [confirm, setConfirm] = useState<Party | null>(null);
+  const [confirm, setConfirm] = useState<Brand | null>(null);
 
-  // "New party" from the header switcher lands here with ?new=1
+  // "New brand" from the header switcher lands here with ?new=1
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("new")) {
       setEditing(null);
       setOpen(true);
-      router.replace("/parties/");
+      router.replace("/brands/");
     }
   }, [router]);
 
@@ -46,24 +46,26 @@ export default function PartiesPage() {
   };
 
   const loadSample = () => {
-    const p = newParty(data.globals, SAMPLE_PARTY);
-    saveParty(p);
-    selectParty(p.id);
-    addSales(sampleLines().map((l) => ({ ...l, partyId: p.id, noteId: null })));
+    const p = newBrand(data.globals, SAMPLE_BRAND);
+    saveBrand(p);
+    selectBrand(p.id);
+    addSales(sampleLines().map((l) => ({ ...l, brandId: p.id, claimId: null })));
+    // the retailer in the same sheet, so the sample claim has a letterhead
+    if (!data.globals.business.name) setGlobals({ business: { ...data.globals.business, name: "MNX Family Store (Kawardha)" } });
   };
 
   return (
     <Page
-      title="Parties"
-      description="Retailers you settle credit notes with, and the deal agreed with each."
-      actions={data.parties.length ? <Button variant="primary" icon={<Plus size={14} strokeWidth={1.5} />} onClick={create}>New party</Button> : null}
+      title="Brands"
+      description="The brands you buy from and claim credit notes from, each with its own terms."
+      actions={data.brands.length ? <Button variant="primary" icon={<Plus size={14} strokeWidth={1.5} />} onClick={create}>New brand</Button> : null}
     >
-      {data.parties.length === 0 ? (
+      {data.brands.length === 0 ? (
         <Card className="py-16">
-          <EmptyStatePresentational icon={Building2} title="No parties yet" description="Add the retailer you want to work out credit notes for, or load the sample party from NIKHIL.xlsx.">
+          <EmptyStatePresentational icon={Building2} title="No brands yet" description="Add a brand you buy from and the terms agreed with it, or load the sample brand from NIKHIL.xlsx.">
             <div className="flex gap-2">
-              <Button variant="primary" icon={<Plus size={14} strokeWidth={1.5} />} onClick={create}>New party</Button>
-              <Button variant="default" onClick={loadSample}>Load sample party</Button>
+              <Button variant="primary" icon={<Plus size={14} strokeWidth={1.5} />} onClick={create}>New brand</Button>
+              <Button variant="default" onClick={loadSample}>Load sample brand</Button>
             </div>
           </EmptyStatePresentational>
         </Card>
@@ -72,20 +74,20 @@ export default function PartiesPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Party</TableHead>
+                <TableHead>Brand</TableHead>
                 <TableHead>GSTIN</TableHead>
                 <TableHead>Terms</TableHead>
-                <TableHead className="text-right">Open sales</TableHead>
-                <TableHead className="text-right">Credit due</TableHead>
-                <TableHead className="text-right">Issued so far</TableHead>
+                <TableHead className="text-right">Unclaimed sales</TableHead>
+                <TableHead className="text-right">To claim</TableHead>
+                <TableHead className="text-right">Claimed so far</TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.parties.map((p) => {
-                const s = partyStats(data, p);
+              {data.brands.map((p) => {
+                const s = brandStats(data, p);
                 return (
-                  <TableRow key={p.id} className="cursor-pointer" onClick={() => { selectParty(p.id); router.push("/sales/"); }}>
+                  <TableRow key={p.id} className="cursor-pointer" onClick={() => { selectBrand(p.id); router.push("/sales/"); }}>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <span className="text-foreground">{p.name}</span>
@@ -114,14 +116,14 @@ export default function PartiesPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-44">
                           <DropdownMenuItem className="gap-2" onSelect={() => { setEditing(p); setOpen(true); }}>
-                            <Pencil size={14} strokeWidth={1.5} /> Edit party
+                            <Pencil size={14} strokeWidth={1.5} /> Edit brand
                           </DropdownMenuItem>
                           <DropdownMenuItem className="gap-2" asChild>
-                            <Link href="/sales/" onClick={() => selectParty(p.id)}><ReceiptText size={14} strokeWidth={1.5} /> Open sales</Link>
+                            <Link href="/sales/" onClick={() => selectBrand(p.id)}><ReceiptText size={14} strokeWidth={1.5} /> Open sales</Link>
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="gap-2 text-destructive" onSelect={() => setConfirm(p)}>
-                            <Trash2 size={14} strokeWidth={1.5} /> Delete party
+                            <Trash2 size={14} strokeWidth={1.5} /> Delete brand
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -134,19 +136,19 @@ export default function PartiesPage() {
         </Card>
       )}
 
-      <PartySheet open={open} onOpenChange={setOpen} party={editing} />
+      <BrandSheet open={open} onOpenChange={setOpen} brand={editing} />
 
       <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {confirm?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Its sales will be deleted too. Credit notes already issued to this party are kept.
+              Your sales of this brand are deleted too. Claims already raised on it are kept.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="danger" onClick={() => confirm && deleteParty(confirm.id)}>Delete party</AlertDialogAction>
+            <AlertDialogAction variant="danger" onClick={() => confirm && deleteBrand(confirm.id)}>Delete brand</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

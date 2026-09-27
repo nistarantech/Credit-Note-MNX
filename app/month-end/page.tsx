@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { CalendarCheck, FileText } from "lucide-react";
 import { inr } from "@/lib/calc";
-import { monthEnd, monthLabel, monthRange, notePayload, salesMonths, thisMonth, type PartyMonth } from "@/lib/month";
+import { monthEnd, monthLabel, monthRange, claimPayload, salesMonths, thisMonth, type BrandMonth } from "@/lib/month";
 import { useStore } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ import { Page } from "@/components/app/page";
 
 const MONTH_KEY = "cn:month-end:month";
 
-/** A month's credit note is dated its last day, or today while the month is still running. */
+/** A month's claim is dated its last day, or today while the month is still running. */
 const noteDateFor = (month: string) => {
   const last = monthRange(month)[1];
   return last < today() ? last : today();
@@ -33,11 +33,11 @@ const noteDateFor = (month: string) => {
 
 export default function MonthEndPage() {
   const store = useStore();
-  const { data, issueNote, selectParty } = store;
+  const { data, raiseClaim, selectBrand } = store;
   const router = useRouter();
   const months = salesMonths(data.sales);
   const [month, setMonth] = useState(() => months[0] ?? thisMonth());
-  const [issuing, setIssuing] = useState<PartyMonth[] | null>(null);
+  const [issuing, setIssuing] = useState<BrandMonth[] | null>(null);
   const [date, setDate] = useState("");
 
   // remember the month between visits
@@ -56,12 +56,12 @@ export default function MonthEndPage() {
 
   const rows = monthEnd(data, month);
   const withSales = rows.filter((r) => r.sales.length);
-  const idle = rows.filter((r) => !r.sales.length && r.party.active);
+  const idle = rows.filter((r) => !r.sales.length && r.brand.active);
   const pending = withSales.filter((r) => r.open.length);
-  const sum = (f: (r: PartyMonth) => number) => withSales.reduce((a, r) => a + f(r), 0);
+  const sum = (f: (r: BrandMonth) => number) => withSales.reduce((a, r) => a + f(r), 0);
   const [from, to] = monthRange(month);
 
-  const openIssue = (list: PartyMonth[]) => {
+  const openIssue = (list: BrandMonth[]) => {
     setDate(noteDateFor(month));
     setIssuing(list);
   };
@@ -69,35 +69,35 @@ export default function MonthEndPage() {
   const issue = () => {
     if (!issuing) return;
     for (const r of issuing) {
-      issueNote(notePayload(data, r.party, r.open, { date, from, to, month, remarks: "" }), r.open.map((s) => s.id));
+      raiseClaim(claimPayload(data, r.brand, r.open, { date, from, to, month, remarks: "" }), r.open.map((s) => s.id));
     }
     const total = issuing.reduce((a, r) => a + r.pending.totalCn, 0);
-    toast.success(`${issuing.length} credit note${issuing.length > 1 ? "s" : ""} issued for ${monthLabel(month)}`, { description: `Total ₹ ${inr(total)}` });
+    toast.success(`${issuing.length} claim${issuing.length > 1 ? "s" : ""} raised for ${monthLabel(month)}`, { description: `Total ₹ ${inr(total)}` });
     setIssuing(null);
   };
 
   return (
     <Page
       title="Month-end"
-      description="The credit note each party gets for the month, worked out on that party's own terms."
+      description="The credit note to claim from each brand for the month, worked out on that brand's own terms."
       size="large"
       actions={
         <>
           <MonthPicker value={month} onChange={pick} months={months} />
           <Button variant="primary" disabled={!pending.length} onClick={() => openIssue(pending)}>
-            Issue all pending{pending.length ? ` (${pending.length})` : ""}
+            Claim all pending{pending.length ? ` (${pending.length})` : ""}
           </Button>
         </>
       }
     >
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <Metric label="Parties with sales" value={`${withSales.length} of ${rows.length}`} />
+        <Metric label="Brands with sales" value={`${withSales.length} of ${rows.length}`} />
         <Metric label="Sale value" value={`₹ ${inr(sum((r) => r.total.all.realization))}`} />
-        <Metric label="Dealer margin" value={`₹ ${inr(sum((r) => r.total.all.margin))}`} />
+        <Metric label="Your margin" value={`₹ ${inr(sum((r) => r.total.all.margin))}`} />
         <Metric
-          label={`Credit notes · ${monthLabel(month, "short")}`}
+          label={`To claim · ${monthLabel(month, "short")}`}
           value={`₹ ${inr(sum((r) => r.total.totalCn))}`}
-          tooltip={`₹ ${inr(sum((r) => r.pending.totalCn))} still to be issued`}
+          tooltip={`₹ ${inr(sum((r) => r.pending.totalCn))} not yet claimed`}
           strong
         />
       </div>
@@ -106,12 +106,12 @@ export default function MonthEndPage() {
         <CardHeader>
           <CardTitle>{monthLabel(month)}</CardTitle>
           <CardDescription>
-            Sales dated {from.split("-").reverse().join("/")} – {to.split("-").reverse().join("/")}. Click a party to see its sales for the month.
+            Sales dated {from.split("-").reverse().join("/")} – {to.split("-").reverse().join("/")}. Click a brand to see your sales of it for the month.
           </CardDescription>
         </CardHeader>
         {withSales.length === 0 ? (
           <div className="py-14">
-            <EmptyStatePresentational icon={CalendarCheck} title={`No sales in ${monthLabel(month)}`} description="Enter or import the parties' sales for this month first.">
+            <EmptyStatePresentational icon={CalendarCheck} title={`No sales in ${monthLabel(month)}`} description="Enter or import your sales of each brand for this month first.">
               <Button variant="default" asChild><Link href="/sales/">Go to sales</Link></Button>
             </EmptyStatePresentational>
           </div>
@@ -119,13 +119,13 @@ export default function MonthEndPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Party</TableHead>
+                <TableHead>Brand</TableHead>
                 <TableHead>Terms</TableHead>
                 <TableHead className="text-right">EOSS pcs</TableHead>
                 <TableHead className="text-right">Fresh pcs</TableHead>
                 <TableHead className="text-right">Sale value</TableHead>
                 <TableHead className="text-right">Margin</TableHead>
-                <TableHead className="text-right">Credit note</TableHead>
+                <TableHead className="text-right">CN to claim</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-24" />
               </TableRow>
@@ -133,20 +133,20 @@ export default function MonthEndPage() {
             <TableBody>
               {withSales.map((r) => (
                 <TableRow
-                  key={r.party.id}
+                  key={r.brand.id}
                   className="cursor-pointer"
                   onClick={() => {
-                    selectParty(r.party.id);
+                    selectBrand(r.brand.id);
                     router.push(`/sales/?month=${month}`);
                   }}
                 >
                   <TableCell>
-                    <div className="text-foreground">{r.party.name}</div>
-                    {r.party.code ? <div className="font-mono text-xs text-foreground-lighter">{r.party.code}</div> : null}
+                    <div className="text-foreground">{r.brand.name}</div>
+                    {r.brand.code ? <div className="font-mono text-xs text-foreground-lighter">{r.brand.code}</div> : null}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-foreground-light">
-                    {Math.round(r.party.discMargin * 100)}% / {Math.round(r.party.freshMargin * 100)}%
-                    {r.party.marginSlabs.length ? <span className="ml-1 text-xs text-foreground-lighter">+{r.party.marginSlabs.length} slabs</span> : null}
+                    {Math.round(r.brand.discMargin * 100)}% / {Math.round(r.brand.freshMargin * 100)}%
+                    {r.brand.marginSlabs.length ? <span className="ml-1 text-xs text-foreground-lighter">+{r.brand.marginSlabs.length} slabs</span> : null}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{inr(r.total.disc.qty, 0)}</TableCell>
                   <TableCell className="text-right tabular-nums">{inr(r.total.fresh.qty, 0)}</TableCell>
@@ -156,12 +156,12 @@ export default function MonthEndPage() {
                   <TableCell className="whitespace-nowrap">
                     {r.open.length === 0 ? (
                       <div className="flex flex-col gap-0.5">
-                        <Badge variant="success" className="w-fit">Issued</Badge>
-                        <span className="font-mono text-xs text-foreground-lighter">{r.notes.map((n) => n.number).join(", ")}</span>
+                        <Badge variant="success" className="w-fit">Claimed</Badge>
+                        <span className="font-mono text-xs text-foreground-lighter">{r.claims.map((n) => n.number).join(", ")}</span>
                       </div>
-                    ) : r.notes.length ? (
+                    ) : r.claims.length ? (
                       <div className="flex flex-col gap-0.5">
-                        <Badge variant="warning" className="w-fit">Part pending</Badge>
+                        <Badge variant="warning" className="w-fit">Part claimed</Badge>
                         <span className="text-xs text-foreground-lighter">{r.open.length} sales · ₹ {inr(r.pending.totalCn)}</span>
                       </div>
                     ) : (
@@ -170,10 +170,10 @@ export default function MonthEndPage() {
                   </TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     {r.open.length ? (
-                      <Button variant="primary" size="tiny" onClick={() => openIssue([r])}>Issue</Button>
+                      <Button variant="primary" size="tiny" onClick={() => openIssue([r])}>Claim</Button>
                     ) : (
                       <Button variant="default" size="tiny" icon={<FileText size={14} strokeWidth={1.5} />} asChild>
-                        <Link href={`/credit-notes/?view=${r.notes[0]?.id}`}>View</Link>
+                        <Link href={`/claims/?view=${r.claims[0]?.id}`}>View</Link>
                       </Button>
                     )}
                   </TableCell>
@@ -182,7 +182,7 @@ export default function MonthEndPage() {
             </TableBody>
             <TableFooter>
               <TableRow>
-                <TableCell colSpan={2} className="text-foreground-light">{withSales.length} parties</TableCell>
+                <TableCell colSpan={2} className="text-foreground-light">{withSales.length} brands</TableCell>
                 <TableCell className="text-right tabular-nums">{inr(sum((r) => r.total.disc.qty), 0)}</TableCell>
                 <TableCell className="text-right tabular-nums">{inr(sum((r) => r.total.fresh.qty), 0)}</TableCell>
                 <TableCell className="text-right tabular-nums">{inr(sum((r) => r.total.all.realization))}</TableCell>
@@ -197,7 +197,7 @@ export default function MonthEndPage() {
 
       {idle.length ? (
         <p className="text-xs text-foreground-lighter">
-          No sales entered this month for: {idle.map((r) => r.party.name).join(", ")}.
+          No sales entered this month for: {idle.map((r) => r.brand.name).join(", ")}.
         </p>
       ) : null}
 
@@ -205,30 +205,30 @@ export default function MonthEndPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Issue {issuing?.length === 1 ? `credit note to ${issuing[0].party.name}` : `${issuing?.length} credit notes`} for {monthLabel(month)}?
+              Raise {issuing?.length === 1 ? `a claim on ${issuing[0].brand.name}` : `${issuing?.length} claims`} for {monthLabel(month)}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Each party gets one note for its open sales in the month, numbered from {data.globals.notePrefix}
-              {String(data.globals.nextNoteNo).padStart(4, "0")}. The sales are then marked as settled.
+              Each brand gets one claim for your unclaimed sales of its goods in the month, numbered from {data.globals.claimPrefix}
+              {String(data.globals.nextClaimNo).padStart(4, "0")}. Those sales are then marked as claimed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogBody className="flex flex-col gap-4">
             <div className="flex flex-col divide-y rounded-md border">
               {issuing?.map((r) => (
-                <div key={r.party.id} className="flex justify-between gap-4 px-3 py-2 text-sm">
-                  <span className="truncate text-foreground-light">{r.party.name}</span>
+                <div key={r.brand.id} className="flex justify-between gap-4 px-3 py-2 text-sm">
+                  <span className="truncate text-foreground-light">{r.brand.name}</span>
                   <span className="tabular-nums text-foreground">₹ {inr(r.pending.totalCn)}</span>
                 </div>
               ))}
             </div>
-            <FormField label="Credit note date" htmlFor="me-date">
+            <FormField label="Claim date" htmlFor="me-date">
               <Input id="me-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </FormField>
           </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={issue}>
-              Issue ₹ {inr(issuing?.reduce((a, r) => a + r.pending.totalCn, 0) ?? 0)}
+              Claim ₹ {inr(issuing?.reduce((a, r) => a + r.pending.totalCn, 0) ?? 0)}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

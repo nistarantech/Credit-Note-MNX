@@ -23,9 +23,11 @@ export function sampleLines(): Line[] {
   }));
 }
 
-/** A ready-made party (MNX, from NIKHIL.xlsx) with the sample rows, for a first look. */
-export const SAMPLE_PARTY = {
-  name: "MNX Family Store (Kawardha)-SIS",
+/** The brand in NIKHIL.xlsx (Crimsoune Club, AW'25) with the sample rows, for a first look. */
+export const SAMPLE_BRAND = {
+  name: "Crimsoune Club",
+  code: "CC",
+  dealName: "30/20/10",
   season: "AW'25",
   applicability: "AW'25 onwards",
   conditions: "1000 pcs / season",

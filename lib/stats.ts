@@ -1,17 +1,17 @@
 import { summarize } from "./calc";
-import { calcSettings, type Data, type Party } from "./store";
+import { calcSettings, type Data, type Brand } from "./store";
 
-/** Sales not yet settled in a credit note, and what they are worth. */
-export function partyStats(d: Data, p: Party) {
-  const sales = d.sales.filter((s) => s.partyId === p.id);
-  const open = sales.filter((s) => !s.noteId);
+/** Sales not yet in a claim, and the credit note they are worth. */
+export function brandStats(d: Data, p: Brand) {
+  const sales = d.sales.filter((s) => s.brandId === p.id);
+  const open = sales.filter((s) => !s.claimId);
   const pending = summarize(open, calcSettings(d.globals, p));
-  const notes = d.notes.filter((n) => n.partyId === p.id);
+  const claims = d.claims.filter((n) => n.brandId === p.id);
   return {
     sales,
     open,
     pending,
-    notes,
-    issued: notes.reduce((a, n) => a + n.total, 0),
+    claims,
+    issued: claims.reduce((a, n) => a + n.total, 0),
   };
 }

@@ -11,7 +11,7 @@ export interface GstSlab {
 }
 
 /**
- * A party-specific margin for sales of one type up to a discount level, e.g.
+ * A brand-specific margin for sales of one type up to a discount level, e.g.
  * "EOSS sales discounted up to 30% → 20% margin, up to 50% → 10%". The first
  * slab (lowest upTo) the sale's discount fits into wins; a sale matching no
  * slab gets the base margin for its type.
@@ -22,7 +22,7 @@ export interface MarginSlab {
   margin: number;
 }
 
-// Everything the formulas need: the global GST rules plus the party's deal.
+// Everything the formulas need: the global GST rules plus the brand's deal.
 export interface Settings {
   freshMargin: number; // dealer margin on FRESH sales (30%)
   discMargin: number; // dealer margin on DISC (EOSS) sales (20%)
@@ -256,18 +256,6 @@ export function blankLine(prev?: Line): Line {
   };
 }
 
-const num = (v: string) => {
-  const t = v.replace(/[₹,\s]/g, "");
-  if (t === "" || t === "-") return NaN;
-  if (t.endsWith("%")) return parseFloat(t) / 100;
-  return parseFloat(t);
-};
-const pct = (v: string) => {
-  const n = num(v);
-  if (isNaN(n)) return 0;
-  return v.includes("%") || n <= 1 ? n : n / 100;
-};
-
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 // Accepts dd-mm-yyyy, dd/mm/yy, yyyy-mm-dd, 1-Sep-2025, or an Excel serial number.
@@ -288,74 +276,6 @@ export function parseDate(v: string): string {
   m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);
   if (m) return `${m[3].length === 2 ? "20" + m[3] : m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   return "";
-}
-
-type Field = "date" | "billNo" | "barcode" | "division" | "department" | "ageing" | "disc" | "type" | "mrp" | "qty" | "wsp" | "gstB2B";
-
-// Column order of the AW'25EOSS sheet (A..M), used when no header row is pasted.
-const SHEET_ORDER: (Field | null)[] = [null, "date", "billNo", "barcode", "division", "department", "ageing", null, "disc", null, "type", "mrp", "qty"];
-
-function headerField(h: string): Field | null {
-  const k = h.toLowerCase().replace(/[^a-z0-9%()-]/g, "");
-  if (k.includes("date")) return "date";
-  if (k.startsWith("billno") || k === "bill" || k.startsWith("invoiceno")) return "billNo";
-  if (k.includes("barcode") || k.includes("article")) return "barcode";
-  if (k.startsWith("division")) return "division";
-  if (k.startsWith("department")) return "department";
-  if (k.startsWith("ageing") || k.startsWith("season")) return "ageing";
-  if (k.startsWith("disc%(m)") || k === "disc%" || k === "disc" || k === "discount%") return "disc";
-  if (k === "slab" || k === "type") return "type";
-  if (k === "mrp" || k === "rsp") return "mrp";
-  if (k === "qty" || k === "quantity") return "qty";
-  if (k === "wsp" || k === "invoicerate") return "wsp";
-  if (k === "gst(b-b)") return "gstB2B";
-  return null;
-}
-
-export function parsePaste(text: string, s: Settings): Line[] {
-  const rows = text.replace(/\r/g, "").split("\n").filter((r) => r.trim()).map((r) => r.split("\t"));
-  if (!rows.length) return [];
-  let map: (Field | null)[] = SHEET_ORDER;
-  const first = rows[0].map(headerField);
-  if (first.filter(Boolean).length >= 2) {
-    // keep the first match of each field (sheet has "Slab" and "WSP" twice)
-    const seen = new Set<Field>();
-    map = first.map((f) => (f && !seen.has(f) ? (seen.add(f), f) : null));
-    rows.shift();
-  }
-  const out: Line[] = [];
-  for (const cells of rows) {
-    const l = blankLine();
-    l.wsp = null;
-    let wspTotal: number | null = null;
-    map.forEach((f, i) => {
-      const v = (cells[i] ?? "").trim();
-      if (!f) return;
-      switch (f) {
-        case "date": l.date = parseDate(v) || l.date; break;
-        case "disc": l.disc = pct(v); break;
-        case "type": l.type = /fresh/i.test(v) ? "FRESH" : "DISC"; break;
-        case "mrp": l.mrp = num(v) || 0; break;
-        case "qty": { const q = num(v); l.qty = isNaN(q) ? 1 : q; break; }
-        case "wsp": { const w = num(v); wspTotal = isNaN(w) ? null : w; break; }
-        case "gstB2B": { const g = num(v); l.gstB2B = isNaN(g) ? null : g; break; }
-        default: l[f] = v;
-      }
-    });
-    if (!l.mrp) continue;
-    // WSP pasted from the sheet is a line total; store per piece. Drop it if it
-    // is just the default factor so later setting changes still apply.
-    if (wspTotal !== null && l.qty) {
-      const unit = wspTotal / l.qty;
-      if (Math.abs(unit - l.mrp * s.wspFactor) > 0.01) l.wsp = unit;
-    }
-    if (l.gstB2B !== null && l.wsp === null) {
-      const auto = l.mrp * s.wspFactor * l.qty * (l.mrp * s.wspFactor > s.b2b.threshold ? s.b2b.high : s.b2b.low);
-      if (Math.abs(auto - l.gstB2B) < 0.02) l.gstB2B = null;
-    }
-    out.push(l);
-  }
-  return out;
 }
 
 export function inr(n: number, dp = 2) {

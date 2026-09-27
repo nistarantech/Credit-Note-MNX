@@ -15,19 +15,19 @@ import { SaleFields } from "@/components/app/sale-form";
 const start = (): Line => ({ ...blankLine(), date: today(), mrp: 2199, qty: 1, disc: 0.5, type: "DISC" });
 
 export default function CalculatorPage() {
-  const { data, party, saveSale } = useStore();
-  const base = calcSettings(data.globals, party);
+  const { data, brand, saveSale } = useStore();
+  const base = calcSettings(data.globals, brand);
   const [line, setLine] = useState<Line>(start);
   const [deal, setDeal] = useState({ freshMargin: base.freshMargin, discMargin: base.discMargin, wspFactor: base.wspFactor });
   const settings = { ...base, ...deal };
   const row = calcRow(line, settings);
   const set = (p: Partial<Line>) => setLine((l) => ({ ...l, ...p }));
-  const dealChanged = party && (deal.freshMargin !== party.freshMargin || deal.discMargin !== party.discMargin || deal.wspFactor !== party.wspFactor);
+  const dealChanged = brand && (deal.freshMargin !== brand.freshMargin || deal.discMargin !== brand.discMargin || deal.wspFactor !== brand.wspFactor);
 
   return (
     <Page
       title="Quick calculator"
-      description="Enter one sale and see exactly how much credit note the party should get back."
+      description="Enter one sale and see exactly how much credit note to claim from the brand."
       actions={
         <Button variant="default" icon={<RotateCcw size={14} strokeWidth={1.5} />} onClick={() => setLine(start())}>
           Reset
@@ -39,7 +39,7 @@ export default function CalculatorPage() {
           <Card>
             <CardHeader>
               <CardTitle>Sale</CardTitle>
-              <CardDescription>What the party sold to the customer and what they paid the company.</CardDescription>
+              <CardDescription>What you sold to the customer and what you paid the brand for it.</CardDescription>
             </CardHeader>
             <CardContent>
               <SaleFields line={line} set={set} settings={settings} showRefs={false} />
@@ -50,7 +50,7 @@ export default function CalculatorPage() {
             <CardHeader>
               <CardTitle>Deal</CardTitle>
               <CardDescription>
-                {party ? `Loaded from ${party.name}. Changes here only affect this calculation.` : "Default deal from Settings. Changes here only affect this calculation."}
+                {brand ? `Loaded from ${brand.name}. Changes here only affect this calculation.` : "Default deal from Settings. Changes here only affect this calculation."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -75,16 +75,16 @@ export default function CalculatorPage() {
             variant="primary"
             size="medium"
             block
-            disabled={!party || !line.mrp}
+            disabled={!brand || !line.mrp}
             onClick={() => {
-              if (!party) return;
-              saveSale({ ...line, id: uid(), partyId: party.id, noteId: null });
-              toast.success(`Added to ${party.name}'s sales`);
+              if (!brand) return;
+              saveSale({ ...line, id: uid(), brandId: brand.id, claimId: null });
+              toast.success(`Added to ${brand.name}'s sales`);
             }}
           >
-            {party ? `Add to ${party.name}'s sales` : "Select a party to save this sale"}
+            {brand ? `Add to ${brand.name}'s sales` : "Select a brand to save this sale"}
           </Button>
-          {dealChanged ? <p className="text-xs text-foreground-lighter text-center">Saved sales use the party&apos;s own deal, not the numbers above.</p> : null}
+          {dealChanged ? <p className="text-xs text-foreground-lighter text-center">Saved sales use the brand&apos;s own deal, not the numbers above.</p> : null}
         </div>
       </div>
     </Page>

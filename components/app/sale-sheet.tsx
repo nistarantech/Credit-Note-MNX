@@ -10,24 +10,24 @@ import { Breakdown } from "./breakdown";
 import { SaleFields } from "./sale-form";
 
 export function SaleSheet({
-  open, onOpenChange, sale, partyId, settings, last,
+  open, onOpenChange, sale, brandId, settings, last,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   sale: Sale | null;
-  partyId: string;
+  brandId: string;
   settings: Settings;
   last?: Sale;
 }) {
   const { saveSale } = useStore();
-  const fresh = (): Sale => ({ ...blankLine(last), partyId, noteId: null });
+  const fresh = (): Sale => ({ ...blankLine(last), brandId, claimId: null });
   const [s, setS] = useState<Sale>(() => sale ?? fresh());
   const [seen, setSeen] = useState({ open, sale });
   if (seen.open !== open || seen.sale !== sale) {
     setSeen({ open, sale });
     if (open) setS(sale ?? fresh());
   }
-  const locked = !!s.noteId;
+  const locked = !!s.claimId;
   const row = calcRow(s, settings);
 
   const save = (again: boolean) => {
@@ -43,7 +43,7 @@ export function SaleSheet({
         <SheetHeader className="border-b px-6 py-4">
           <SheetTitle>{sale ? "Edit sale" : "New sale"}</SheetTitle>
           <SheetDescription>
-            {locked ? "This sale is settled in an issued credit note and can't be changed." : "The working on the right updates as you type."}
+            {locked ? "This sale is in a claim and can't be changed. Delete the claim to edit it." : "The working on the right updates as you type."}
           </SheetDescription>
         </SheetHeader>
         <div className="grid flex-1 gap-6 overflow-y-auto p-6 md:grid-cols-[1fr_380px]">

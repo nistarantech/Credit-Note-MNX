@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Download, Plus, Trash2, Upload } from "lucide-react";
+import { Database, Download, FolderOpen, Plus, Trash2, Upload } from "lucide-react";
+import { desktopDb } from "@/lib/persist";
 import { DEFAULT_GLOBALS, useStore, type Data, type Globals } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   PageSection, PageSectionContent, PageSectionDescription, PageSectionMeta, PageSectionSummary, PageSectionTitle,
@@ -38,8 +40,13 @@ export default function SettingsPage() {
   const { data, setGlobals, replaceAll } = useStore();
   const g = data.globals;
   const [reset, setReset] = useState(false);
+  const [dbInfo, setDbInfo] = useState<{ dir: string; file: string } | null>(null);
+  useEffect(() => {
+    desktopDb()?.info().then(setDbInfo);
+  }, []);
   const file = useRef<HTMLInputElement>(null);
   const set = (patch: Partial<Globals>) => setGlobals(patch);
+  const setBiz = (patch: Partial<Globals["business"]>) => set({ business: { ...g.business, ...patch } });
   const setSlab = (i: number, patch: Partial<Globals["b2cSlabs"][number]>) =>
     set({ b2cSlabs: g.b2cSlabs.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
 
@@ -47,7 +54,7 @@ export default function SettingsPage() {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `credit-notes-backup-${today()}.json`;
+    a.download = `cn-claims-backup-${today()}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -55,38 +62,59 @@ export default function SettingsPage() {
   const importData = async (f: File) => {
     try {
       const d = JSON.parse(await f.text()) as Data;
-      if (!Array.isArray(d.parties) || !Array.isArray(d.sales)) throw new Error("not a backup");
+      if (!Array.isArray(d.brands) || !Array.isArray(d.sales)) throw new Error("not a backup");
       replaceAll(d);
-      toast.success(`Restored ${d.parties.length} parties, ${d.sales.length} sales, ${d.notes?.length ?? 0} credit notes`);
+      toast.success(`Restored ${d.brands.length} brands, ${d.sales.length} sales, ${d.claims?.length ?? 0} claims`);
     } catch {
       toast.error("That file is not a Credit Note backup");
     }
   };
 
   return (
-    <Page title="Settings" description="Rules used for every party. A party's own deal is edited on the Parties screen.">
-      <Section title="Credit note" description="Printed on every credit note.">
+    <Page title="Settings" description="Your details and the rules shared by every brand. Each brand's own terms are set on the Brands screen.">
+      <Section title="Your business" description="You, the retailer claiming the credit notes. Printed at the top of every claim.">
         <Card>
           <CardContent className="flex flex-col gap-4">
-            <FormField label="Company name" htmlFor="s-co">
-              <Input id="s-co" value={g.company} onChange={(e) => set({ company: e.target.value })} placeholder="Your company" />
+            <FormField label="Business name" htmlFor="s-name">
+              <Input id="s-name" value={g.business.name} onChange={(e) => setBiz({ name: e.target.value })} placeholder="MNX Family Store (Kawardha)" />
             </FormField>
-            <div className="grid grid-cols-2 gap-4">
-              <FormField label="Number prefix" htmlFor="s-pre">
-                <Input id="s-pre" value={g.notePrefix} onChange={(e) => set({ notePrefix: e.target.value })} className="font-mono" />
+            <div className="grid grid-cols-3 gap-4">
+              <FormField label="GSTIN" htmlFor="s-gst">
+                <Input id="s-gst" value={g.business.gstNo} onChange={(e) => setBiz({ gstNo: e.target.value.toUpperCase() })} className="font-mono" />
               </FormField>
-              <FormField label="Next number" htmlFor="s-next" hint={`Next note: ${g.notePrefix}${String(g.nextNoteNo).padStart(4, "0")}`}>
-                <NumberInput id="s-next" value={g.nextNoteNo} onChange={(v) => set({ nextNoteNo: Math.max(1, Math.round(v ?? 1)) })} />
+              <FormField label="Phone" htmlFor="s-phone">
+                <Input id="s-phone" value={g.business.phone} onChange={(e) => setBiz({ phone: e.target.value })} />
+              </FormField>
+              <FormField label="Email" htmlFor="s-email">
+                <Input id="s-email" type="email" value={g.business.email} onChange={(e) => setBiz({ email: e.target.value })} />
               </FormField>
             </div>
-            <FormField label="CN % is worked on" htmlFor="s-base" hint="Share of the dispatch MRP used for “CN % of MRP”">
+            <FormField label="Address" htmlFor="s-addr">
+              <Textarea id="s-addr" rows={2} value={g.business.address} onChange={(e) => setBiz({ address: e.target.value })} />
+            </FormField>
+          </CardContent>
+        </Card>
+      </Section>
+
+      <Section title="Claims" description="How your claims are numbered and the CN % is worked out.">
+        <Card>
+          <CardContent className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Claim number prefix" htmlFor="s-pre">
+                <Input id="s-pre" value={g.claimPrefix} onChange={(e) => set({ claimPrefix: e.target.value })} className="font-mono" />
+              </FormField>
+              <FormField label="Next number" htmlFor="s-next" hint={`Next claim: ${g.claimPrefix}${String(g.nextClaimNo).padStart(4, "0")}`}>
+                <NumberInput id="s-next" value={g.nextClaimNo} onChange={(v) => set({ nextClaimNo: Math.max(1, Math.round(v ?? 1)) })} />
+              </FormField>
+            </div>
+            <FormField label="CN % is worked on" htmlFor="s-base" hint="Share of the MRP received from the brand, for “CN % of MRP”. A brand can override it.">
               <NumberInput id="s-base" percent value={g.cnBasePct} onChange={(v) => set({ cnBasePct: v ?? 0 })} />
             </FormField>
           </CardContent>
         </Card>
       </Section>
 
-      <Section title="Default deal" description="Filled in for new parties. Each party can have its own.">
+      <Section title="Default deal" description="Filled in for new brands. Each brand can have its own.">
         <Card>
           <CardContent className="grid grid-cols-3 gap-4">
             <FormField label="EOSS margin" htmlFor="s-disc">
@@ -159,7 +187,7 @@ export default function SettingsPage() {
         </Card>
       </Section>
 
-      <Section title="GST on the company bill" description="GST the company charged on WSP when it dispatched the goods.">
+      <Section title="GST on the brand's bill" description="GST the brand charged you on WSP when it sent the goods.">
         <Card>
           <CardContent className="grid grid-cols-3 gap-4">
             <FormField label="WSP above ₹ / piece" htmlFor="s-bt">
@@ -186,11 +214,35 @@ export default function SettingsPage() {
         </Card>
       </Section>
 
-      <Section title="Data" description="Everything is stored on this computer. Keep a backup file somewhere safe.">
+      <Section
+        title="Data"
+        description={dbInfo ? "Everything is kept in a SQLite database on this computer, with the original Excel files filed by brand and month." : "Everything is kept in this browser. Keep a backup file somewhere safe."}
+      >
         <Card>
+          {dbInfo ? (
+            <CardContent className="flex flex-col gap-1">
+              <span className="text-xs text-foreground-lighter">Database</span>
+              <span className="break-all font-mono text-xs text-foreground-light">{dbInfo.file}</span>
+            </CardContent>
+          ) : null}
           <CardContent className="flex flex-wrap gap-2">
-            <Button variant="default" icon={<Download size={14} strokeWidth={1.5} />} onClick={exportData}>Download backup</Button>
-            <Button variant="default" icon={<Upload size={14} strokeWidth={1.5} />} onClick={() => file.current?.click()}>Restore backup</Button>
+            {dbInfo ? (
+              <>
+                <Button variant="default" icon={<FolderOpen size={14} strokeWidth={1.5} />} onClick={() => desktopDb()?.openFolder()}>Open data folder</Button>
+                <Button
+                  variant="default"
+                  icon={<Database size={14} strokeWidth={1.5} />}
+                  onClick={async () => {
+                    const file = await desktopDb()?.backup();
+                    if (file) toast.success("Database backed up", { description: file });
+                  }}
+                >
+                  Back up database
+                </Button>
+              </>
+            ) : null}
+            <Button variant="default" icon={<Download size={14} strokeWidth={1.5} />} onClick={exportData}>Export JSON</Button>
+            <Button variant="default" icon={<Upload size={14} strokeWidth={1.5} />} onClick={() => file.current?.click()}>Restore from JSON</Button>
             <input ref={file} type="file" accept="application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importData(f); e.target.value = ""; }} />
             <Button variant="danger" className="ml-auto" onClick={() => setReset(true)}>Erase all data</Button>
           </CardContent>
@@ -202,12 +254,12 @@ export default function SettingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Erase all data?</AlertDialogTitle>
             <AlertDialogDescription>
-              All {data.parties.length} parties, {data.sales.length} sales and {data.notes.length} credit notes are deleted from this computer. Download a backup first if you may need them.
+              All {data.brands.length} brands, {data.sales.length} sales, {data.purchases.length} invoice lines and {data.claims.length} claims are deleted. Stored Excel files stay in the data folder. Download a backup first if you may need them.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="danger" onClick={() => replaceAll({ globals: DEFAULT_GLOBALS, parties: [], sales: [], notes: [], currentPartyId: null })}>
+            <AlertDialogAction variant="danger" onClick={() => replaceAll({ globals: DEFAULT_GLOBALS })}>
               Erase everything
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { calcRow, inr, type Line, type MarginSlab } from "@/lib/calc";
-import { calcSettings, newParty, useStore, type Party } from "@/lib/store";
+import { calcSettings, newBrand, useStore, type Brand } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,33 +15,34 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField, NumberInput, today } from "./fields";
 
-/** Add or edit a party: details, the terms its credit notes use, and dispatch. */
-export function PartySheet({
-  open, onOpenChange, party,
-}: { open: boolean; onOpenChange: (o: boolean) => void; party: Party | null }) {
-  const { data, saveParty, selectParty } = useStore();
-  const [p, setP] = useState<Party>(() => party ?? newParty(data.globals));
+/** Add or edit a brand: details, the terms its credit claims use, and dispatch. */
+export function BrandSheet({
+  open, onOpenChange, brand,
+}: { open: boolean; onOpenChange: (o: boolean) => void; brand: Brand | null }) {
+  const { data, saveBrand, selectBrand } = useStore();
+  const [p, setP] = useState<Brand>(() => brand ?? newBrand(data.globals));
   const [tab, setTab] = useState("details");
-  const [seen, setSeen] = useState({ open, party });
-  if (seen.open !== open || seen.party !== party) {
-    setSeen({ open, party });
+  const [seen, setSeen] = useState({ open, brand });
+  if (seen.open !== open || seen.brand !== brand) {
+    setSeen({ open, brand });
     if (open) {
-      setP(party ?? newParty(data.globals));
+      setP(brand ?? newBrand(data.globals));
       setTab("details");
     }
   }
-  const set = (patch: Partial<Party>) => setP((x) => ({ ...x, ...patch }));
-  const setD = (k: keyof Party["dispatch"], v: number | null) => setP((x) => ({ ...x, dispatch: { ...x.dispatch, [k]: v ?? 0 } }));
+  const set = (patch: Partial<Brand>) => setP((x) => ({ ...x, ...patch }));
+  const setD = (k: keyof Brand["dispatch"], v: number | null) => setP((x) => ({ ...x, dispatch: { ...x.dispatch, [k]: v ?? 0 } }));
   const setSlab = (i: number, patch: Partial<MarginSlab>) => set({ marginSlabs: p.marginSlabs.map((m, j) => (j === i ? { ...m, ...patch } : m)) });
-  const isNew = !party;
+  const isNew = !brand;
+  const bought = data.purchases.filter((x) => x.brandId === p.id).length;
 
   const save = () => {
     if (!p.name.trim()) {
       setTab("details");
       return;
     }
-    saveParty({ ...p, name: p.name.trim(), marginSlabs: [...p.marginSlabs].sort((a, b) => a.type.localeCompare(b.type) || a.upTo - b.upTo) });
-    if (isNew) selectParty(p.id);
+    saveBrand({ ...p, name: p.name.trim(), marginSlabs: [...p.marginSlabs].sort((a, b) => a.type.localeCompare(b.type) || a.upTo - b.upTo) });
+    if (isNew) selectBrand(p.id);
     onOpenChange(false);
   };
 
@@ -49,25 +50,25 @@ export function PartySheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" size="lg" className="flex w-full flex-col gap-0 p-0">
         <SheetHeader className="border-b px-6 py-4">
-          <SheetTitle>{isNew ? "New party" : p.name || "Edit party"}</SheetTitle>
-          <SheetDescription>Each party&apos;s credit notes are worked out on the terms set here.</SheetDescription>
+          <SheetTitle>{isNew ? "New brand" : p.name || "Edit brand"}</SheetTitle>
+          <SheetDescription>Your credit note claims on this brand are worked out on the terms set here.</SheetDescription>
         </SheetHeader>
 
         <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
           <TabsList className="gap-6 px-6">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="terms">Terms &amp; margins</TabsTrigger>
-            <TabsTrigger value="dispatch">Season &amp; dispatch</TabsTrigger>
+            <TabsTrigger value="dispatch">Season &amp; purchases</TabsTrigger>
           </TabsList>
 
           <div className="flex-1 overflow-y-auto px-6 pb-6">
             <TabsContent value="details" className="mt-6 flex flex-col gap-4">
               <div className="grid grid-cols-[1fr_140px] gap-4">
-                <FormField label="Party name" htmlFor="p-name">
-                  <Input id="p-name" autoFocus value={p.name} onChange={(e) => set({ name: e.target.value })} placeholder="MNX Family Store (Kawardha)-SIS" />
+                <FormField label="Brand / company name" htmlFor="p-name">
+                  <Input id="p-name" autoFocus value={p.name} onChange={(e) => set({ name: e.target.value })} placeholder="Crimsoune Club" />
                 </FormField>
                 <FormField label="Code" htmlFor="p-code">
-                  <Input id="p-code" value={p.code} onChange={(e) => set({ code: e.target.value.toUpperCase() })} placeholder="MNX-KWD" className="font-mono" />
+                  <Input id="p-code" value={p.code} onChange={(e) => set({ code: e.target.value.toUpperCase() })} placeholder="CC" className="font-mono" />
                 </FormField>
               </div>
               <FormField label="GSTIN" htmlFor="p-gst">
@@ -81,16 +82,16 @@ export function PartySheet({
                   <Input id="p-phone" value={p.phone} onChange={(e) => set({ phone: e.target.value })} />
                 </FormField>
               </div>
-              <FormField label="Address" htmlFor="p-addr" hint="Printed on the credit note">
+              <FormField label="Address" htmlFor="p-addr" hint="Printed on the claim, as the addressee">
                 <Textarea id="p-addr" rows={3} value={p.address} onChange={(e) => set({ address: e.target.value })} />
               </FormField>
-              <FormField label="Internal notes" htmlFor="p-notes">
-                <Textarea id="p-notes" rows={2} value={p.notes} onChange={(e) => set({ notes: e.target.value })} />
+              <FormField label="Internal claims" htmlFor="p-claims">
+                <Textarea id="p-claims" rows={2} value={p.memo} onChange={(e) => set({ memo: e.target.value })} />
               </FormField>
               <div className="flex items-center justify-between gap-4 rounded-md border px-4 py-3">
                 <div>
                   <Label htmlFor="p-active">Active</Label>
-                  <p className="text-xs text-foreground-lighter">Inactive parties are left out of the month-end reminders.</p>
+                  <p className="text-xs text-foreground-lighter">Inactive brands are left out of the month-end list when they have no sales.</p>
                 </div>
                 <Switch id="p-active" checked={p.active} onCheckedChange={(c) => set({ active: c })} />
               </div>
@@ -98,13 +99,13 @@ export function PartySheet({
 
             <TabsContent value="terms" className="mt-6 flex flex-col gap-6">
               <div className="grid grid-cols-3 gap-4">
-                <FormField label="EOSS margin" htmlFor="p-disc" hint="Base, on discounted sales">
+                <FormField label="Your EOSS margin" htmlFor="p-disc" hint="Base, on discounted sales">
                   <NumberInput id="p-disc" percent value={p.discMargin} onChange={(v) => set({ discMargin: v ?? 0 })} />
                 </FormField>
-                <FormField label="Fresh margin" htmlFor="p-fresh" hint="Base, on full-price sales">
+                <FormField label="Your fresh margin" htmlFor="p-fresh" hint="Base, on full-price sales">
                   <NumberInput id="p-fresh" percent value={p.freshMargin} onChange={(v) => set({ freshMargin: v ?? 0 })} />
                 </FormField>
-                <FormField label="Deal name" htmlFor="p-deal" hint="Printed on the note">
+                <FormField label="Deal name" htmlFor="p-deal" hint="Printed on the claim">
                   <Input id="p-deal" value={p.dealName} onChange={(e) => set({ dealName: e.target.value })} placeholder="30/20/10" />
                 </FormField>
               </div>
@@ -164,13 +165,13 @@ export function PartySheet({
                 <FormField
                   label="CN % base"
                   htmlFor="p-base"
-                  hint={p.cnBasePct === null ? `Using the global ${Math.round(data.globals.cnBasePct * 100)}% of dispatch MRP` : "Of dispatch MRP, for this party only"}
+                  hint={p.cnBasePct === null ? `Using the global ${Math.round(data.globals.cnBasePct * 100)}% of MRP received` : "Of MRP received, for this brand only"}
                 >
                   <NumberInput id="p-base" percent allowEmpty value={p.cnBasePct} placeholder={String(Math.round(data.globals.cnBasePct * 100))} onChange={(v) => set({ cnBasePct: v })} />
                 </FormField>
               </div>
 
-              <TermsPreview party={p} />
+              <TermsPreview brand={p} />
             </TabsContent>
 
             <TabsContent value="dispatch" className="mt-6 flex flex-col gap-6">
@@ -182,8 +183,12 @@ export function PartySheet({
               </div>
               <div className="flex flex-col gap-4">
                 <div>
-                  <Label>Dispatched this season</Label>
-                  <p className="text-xs text-foreground-lighter">What the company billed the party. Used for CN % of MRP and goods-sold %.</p>
+                  <Label>Received from the brand this season</Label>
+                  <p className="text-xs text-foreground-lighter">
+                    {bought
+                      ? `Worked out from ${bought.toLocaleString("en-IN")} imported invoice lines — re-importing updates it.`
+                      : "What the brand billed you this season. Used for CN % of MRP and goods-sold %. Importing the brand's invoice sheet fills this in."}
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField label="Pieces" htmlFor="p-dq"><NumberInput id="p-dq" value={p.dispatch.qty} onChange={(v) => setD("qty", v)} /></FormField>
@@ -200,7 +205,7 @@ export function PartySheet({
 
         <SheetFooter className="flex-row justify-end gap-2 border-t px-6 py-3">
           <Button variant="default" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!p.name.trim()} onClick={save}>{isNew ? "Create party" : "Save changes"}</Button>
+          <Button variant="primary" disabled={!p.name.trim()} onClick={save}>{isNew ? "Create brand" : "Save changes"}</Button>
         </SheetFooter>
       </SheetContent>
     </Sheet>
@@ -208,9 +213,9 @@ export function PartySheet({
 }
 
 /** How a few typical sales come out on these terms — a sanity check while editing. */
-function TermsPreview({ party }: { party: Party }) {
+function TermsPreview({ brand }: { brand: Brand }) {
   const { data } = useStore();
-  const s = calcSettings(data.globals, party);
+  const s = calcSettings(data.globals, brand);
   const cases: [string, Partial<Line>][] = [
     ["Fresh, full price", { type: "FRESH", disc: 0 }],
     ["EOSS, 30% off", { type: "DISC", disc: 0.3 }],
@@ -227,7 +232,7 @@ function TermsPreview({ party }: { party: Party }) {
             <TableRow>
               <TableHead>Sale</TableHead>
               <TableHead className="text-right">Margin</TableHead>
-              <TableHead className="text-right">Credit note</TableHead>
+              <TableHead className="text-right">CN to claim</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

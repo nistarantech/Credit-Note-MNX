@@ -13,7 +13,7 @@ export function SaleFields({
   const autoWsp = line.mrp * settings.wspFactor;
   return (
     <div className="flex flex-col gap-6">
-      <FormField label="Sale type" hint={`${line.type === "DISC" ? "End-of-season sale" : "Regular sale"} — dealer margin ${+(marginFor(line.type, line.disc, settings) * 100).toFixed(2)}% on this party's terms`}>
+      <FormField label="Sale type" hint={`${line.type === "DISC" ? "End-of-season sale" : "Regular sale"} — your margin ${+(marginFor(line.type, line.disc, settings) * 100).toFixed(2)}% on this brand's terms`}>
         <ToggleGroup
           type="single"
           value={line.type}
@@ -43,7 +43,7 @@ export function SaleFields({
         <FormField label="Discount given" htmlFor="f-disc" hint={`Sale value ₹ ${inr(row.realization)}`}>
           <NumberInput id="f-disc" percent value={line.disc} onChange={(v) => set({ disc: v ?? 0 })} />
         </FormField>
-        <FormField label="Purchase rate (WSP) per piece" htmlFor="f-wsp" hint={line.wsp === null ? `Auto: MRP × ${settings.wspFactor}` : "From company invoice"}>
+        <FormField label="Purchase rate (WSP) per piece" htmlFor="f-wsp" hint={line.wsp === null ? `Auto: MRP × ${settings.wspFactor}` : "From the brand's invoice"}>
           <NumberInput id="f-wsp" prefix="₹" allowEmpty value={line.wsp} placeholder={inr(autoWsp)} onChange={(v) => set({ wsp: v })} />
         </FormField>
       </div>
