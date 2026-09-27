@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { FormField, NumberInput, today } from "./fields";
+import { DISCOUNT_PRESETS, MARGIN_PRESETS, PercentPicker } from "./margin-select";
 
 /** Add or edit a brand: details, the terms its credit claims use, and dispatch. */
 export function BrandSheet({
@@ -100,10 +101,10 @@ export function BrandSheet({
             <TabsContent value="terms" className="mt-6 flex flex-col gap-6">
               <div className="grid grid-cols-3 gap-4">
                 <FormField label="Your EOSS margin" htmlFor="p-disc" hint="Base, on discounted sales">
-                  <NumberInput id="p-disc" percent value={p.discMargin} onChange={(v) => set({ discMargin: v ?? 0 })} />
+                  <PercentPicker id="p-disc" presets={MARGIN_PRESETS} value={p.discMargin} onChange={(v) => set({ discMargin: v ?? 0 })} />
                 </FormField>
                 <FormField label="Your fresh margin" htmlFor="p-fresh" hint="Base, on full-price sales">
-                  <NumberInput id="p-fresh" percent value={p.freshMargin} onChange={(v) => set({ freshMargin: v ?? 0 })} />
+                  <PercentPicker id="p-fresh" presets={MARGIN_PRESETS} value={p.freshMargin} onChange={(v) => set({ freshMargin: v ?? 0 })} />
                 </FormField>
                 <FormField label="Deal name" htmlFor="p-deal" hint="Printed on the claim">
                   <Input id="p-deal" value={p.dealName} onChange={(e) => set({ dealName: e.target.value })} placeholder="30/20/10" />
@@ -140,8 +141,8 @@ export function BrandSheet({
                                 </SelectContent>
                               </Select>
                             </TableCell>
-                            <TableCell><NumberInput percent value={m.upTo} onChange={(v) => setSlab(i, { upTo: v ?? 0 })} /></TableCell>
-                            <TableCell><NumberInput percent value={m.margin} onChange={(v) => setSlab(i, { margin: v ?? 0 })} /></TableCell>
+                            <TableCell><PercentPicker presets={DISCOUNT_PRESETS.filter((d) => d > 0)} value={m.upTo} onChange={(v) => setSlab(i, { upTo: v ?? 0 })} /></TableCell>
+                            <TableCell><PercentPicker presets={MARGIN_PRESETS} value={m.margin} onChange={(v) => setSlab(i, { margin: v ?? 0 })} /></TableCell>
                             <TableCell>
                               <Button variant="text" size="tiny" className="h-7 w-7 px-0" icon={<Trash2 size={14} strokeWidth={1.5} />} aria-label="Remove slab"
                                 onClick={() => set({ marginSlabs: p.marginSlabs.filter((_, j) => j !== i) })} />

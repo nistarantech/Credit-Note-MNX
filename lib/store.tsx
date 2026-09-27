@@ -2,8 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { DEFAULT_SETTINGS, uid, type Line, type MarginSlab, type Settings } from "./calc";
-import { desktopDb, diff, fromSnapshot, isEmpty } from "./persist";
+import { DEFAULT_SETTINGS, uid, withGstHistory, type Line, type MarginSlab, type Settings } from "./calc";
+import { desktopDb, diff, fromSnapshot, isEmpty, settingsFixups } from "./persist";
 
 /**
  * A brand (supplier) you buy from and claim credit notes from. Every brand has
@@ -112,7 +112,7 @@ export interface Business {
 export interface Globals {
   b2cSlabs: Settings["b2cSlabs"];
   roundGstFactor: boolean;
-  b2b: Settings["b2b"];
+  b2bSlabs: Settings["b2bSlabs"]; // GST on the brand's bill, by invoice date
   cnBasePct: number;
   claimPrefix: string;
   nextClaimNo: number;
@@ -133,7 +133,7 @@ export interface Data {
 export const DEFAULT_GLOBALS: Globals = {
   b2cSlabs: DEFAULT_SETTINGS.b2cSlabs,
   roundGstFactor: DEFAULT_SETTINGS.roundGstFactor,
-  b2b: DEFAULT_SETTINGS.b2b,
+  b2bSlabs: DEFAULT_SETTINGS.b2bSlabs,
   cnBasePct: DEFAULT_SETTINGS.cnBasePct,
   claimPrefix: "CLM/25-26/",
   nextClaimNo: 1,
@@ -183,7 +183,7 @@ export function calcSettings(g: Globals, p: Brand | undefined): Settings {
     wspFactor: p?.wspFactor ?? g.defaults.wspFactor,
     b2cSlabs: g.b2cSlabs,
     roundGstFactor: g.roundGstFactor,
-    b2b: g.b2b,
+    b2bSlabs: g.b2bSlabs,
     cnBasePct: p?.cnBasePct ?? g.cnBasePct,
     dispatch: p?.dispatch ?? { qty: 0, mrp: 0, wsp: 0, gst: 0 },
   };
@@ -191,12 +191,13 @@ export function calcSettings(g: Globals, p: Brand | undefined): Settings {
 
 /** Fill in fields added since the data was saved (older versions, restored backups). */
 function normalize(d: Partial<Data>): Data {
-  const globals: Globals = {
+  const globals: Globals = withGstHistory({
     ...DEFAULT_GLOBALS,
     ...d.globals,
+    b2bSlabs: d.globals?.b2bSlabs ?? [], // an older single `b2b` rule becomes history below
     defaults: { ...DEFAULT_GLOBALS.defaults, ...d.globals?.defaults },
     business: { ...DEFAULT_GLOBALS.business, ...d.globals?.business },
-  };
+  });
   return {
     ...EMPTY,
     ...d,
@@ -211,6 +212,7 @@ function normalize(d: Partial<Data>): Data {
       status: n.status ?? "raised",
       received: n.received ?? null,
       brand: newBrand(globals, n.brand),
+      settings: withGstHistory(n.settings),
     })),
   };
 }
@@ -252,12 +254,15 @@ async function loadAll(): Promise<{ data: Data; saved: Data }> {
     const data = loadLocal() ?? EMPTY;
     return { data, saved: data };
   }
-  const fromDb = fromSnapshot(await db.load());
+  const snapshot = await db.load();
+  const fromDb = fromSnapshot(snapshot);
   if (isEmpty(fromDb)) {
     const local = loadLocal();
     if (local && !isEmpty(local)) return { data: local, saved: normalize(fromDb) };
   }
   const data = normalize(fromDb);
+  const fixups = settingsFixups(snapshot.settings, data.globals);
+  if (fixups.length) await db.apply(fixups);
   return { data, saved: data };
 }
 
@@ -344,6 +349,12 @@ function useStoreState() {
           ...d,
           sales: d.sales.some((x) => x.id === s.id) ? d.sales.map((x) => (x.id === s.id ? s : x)) : [...d.sales, s],
         })),
+      /** Change many sales at once (e.g. a custom margin). Sales already in a claim are left alone. */
+      updateSales: (ids: string[], patch: Partial<Sale>) =>
+        update((d) => {
+          const set = new Set(ids);
+          return { ...d, sales: d.sales.map((s) => (set.has(s.id) && !s.claimId ? { ...s, ...patch } : s)) };
+        }),
       addSales: (list: Sale[]) => update((d) => ({ ...d, sales: [...d.sales, ...list] })),
       deleteSales: (ids: string[]) => update((d) => ({ ...d, sales: d.sales.filter((s) => !ids.includes(s.id) || s.claimId) })),
       raiseClaim: (n: ClaimDraft, saleIds: string[]) => {

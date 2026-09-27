@@ -6,6 +6,7 @@ import { sampleLines } from "@/lib/sample";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Admonition } from "@/components/ui-patterns/admonition";
+import { describeSlab, periodOf } from "@/components/app/gst";
 import { Page } from "@/components/app/page";
 
 export default function FormulasPage() {
@@ -18,11 +19,11 @@ export default function FormulasPage() {
     ["N", "MRP value", "MRP × Qty", `${f(ex.mrp)} × ${ex.qty} = ${f(ex.mrpValue)}`],
     ["O", "Discount", "MRP value × discount %", `${f(ex.mrpValue)} × ${pctStr(ex.disc, 0)} = ${f(ex.discAmt)}`],
     ["Q", "Sale value (realization)", "MRP value − discount", `${f(ex.mrpValue)} − ${f(ex.discAmt)} = ${f(ex.realization)}`],
-    ["S", "GST factor in sale", "rate ÷ (1 + rate)", `${pctStr(ex.gstRate, 0)} → ${ex.gstFactor}`],
+    ["S", "GST factor in sale", "rate ÷ (1 + rate); rate in force on the bill date (see below)", `${pctStr(ex.gstRate, 0)} → ${ex.gstFactor}`],
     ["R", "GST in sale (B-C)", "Sale value × GST factor", `${f(ex.realization)} × ${ex.gstFactor} = ${f(ex.gstB2C)}`],
-    ["T", "Your margin", "(Sale value − GST in sale) × margin %", `${f(ex.realization - ex.gstB2C)} × ${pctStr(ex.marginPct, 0)} = ${f(ex.margin)}`],
+    ["T", "Your margin", "(Sale value − GST in sale) × margin % — the brand's terms, or the sale's custom margin", `${f(ex.realization - ex.gstB2C)} × ${pctStr(ex.marginPct, 0)} = ${f(ex.margin)}`],
     ["W", "WSP (brand's bill to you)", `MRP × ${s.wspFactor} × Qty, or invoice rate × Qty`, f(ex.wspValue)],
-    ["X", "GST on brand's bill (B-B)", `WSP × ${pctStr(s.b2b.low, 0)} up to ₹ ${s.b2b.threshold} / pc, else ${pctStr(s.b2b.high, 0)}`, f(ex.gstB2BValue)],
+    ["X", "GST on brand's bill (B-B)", "WSP × rate in force on the purchase invoice date (see below)", `${f(ex.wspValue)} × ${pctStr(ex.gstB2BRate, 0)} = ${f(ex.gstB2BValue)}`],
     ["U", "You should pay the brand", "Sale value − GST in sale − margin + GST on bill", `${f(ex.realization)} − ${f(ex.gstB2C)} − ${f(ex.margin)} + ${f(ex.gstB2BValue)} = ${f(ex.netPayable)}`],
     ["V", "Credit note to claim", "(WSP + GST on bill) − you should pay", `${f(ex.wspValue + ex.gstB2BValue)} − ${f(ex.netPayable)} = ${f(ex.cn)}`],
   ];
@@ -52,6 +53,33 @@ export default function FormulasPage() {
                 <TableCell className="text-right font-mono text-xs">{example}</TableCell>
               </TableRow>
             ))}
+          </TableBody>
+        </Table>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>GST rate history</CardTitle>
+          <CardDescription>Set in Settings. A sale can also carry its own GST rate.</CardDescription>
+        </CardHeader>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Applies to</TableHead>
+              <TableHead>Period</TableHead>
+              <TableHead>Rates</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {([["Your sale price (by bill date)", s.b2cSlabs], ["Brand's bill (by invoice date)", s.b2bSlabs]] as const).flatMap(([label, slabs]) =>
+              slabs.map((sl, i) => (
+                <TableRow key={`${label}${i}`}>
+                  <TableCell className="text-foreground">{i === 0 ? label : ""}</TableCell>
+                  <TableCell className="whitespace-nowrap text-foreground-light">{periodOf(slabs, i)}</TableCell>
+                  <TableCell className="text-foreground-light">{describeSlab(sl)}</TableCell>
+                </TableRow>
+              )),
+            )}
           </TableBody>
         </Table>
       </Card>

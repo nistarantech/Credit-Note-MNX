@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Breakdown } from "@/components/app/breakdown";
 import { FormField, NumberInput, today } from "@/components/app/fields";
+import { MARGIN_PRESETS, PercentPicker } from "@/components/app/margin-select";
 import { Page } from "@/components/app/page";
 import { SaleFields } from "@/components/app/sale-form";
 
@@ -56,10 +57,10 @@ export default function CalculatorPage() {
             <CardContent>
               <div className="grid grid-cols-3 gap-4">
                 <FormField label="EOSS margin" htmlFor="d-disc">
-                  <NumberInput id="d-disc" percent value={deal.discMargin} onChange={(v) => setDeal((d) => ({ ...d, discMargin: v ?? 0 }))} />
+                  <PercentPicker id="d-disc" presets={MARGIN_PRESETS} value={deal.discMargin} onChange={(v) => setDeal((d) => ({ ...d, discMargin: v ?? 0 }))} />
                 </FormField>
                 <FormField label="Fresh margin" htmlFor="d-fresh">
-                  <NumberInput id="d-fresh" percent value={deal.freshMargin} onChange={(v) => setDeal((d) => ({ ...d, freshMargin: v ?? 0 }))} />
+                  <PercentPicker id="d-fresh" presets={MARGIN_PRESETS} value={deal.freshMargin} onChange={(v) => setDeal((d) => ({ ...d, freshMargin: v ?? 0 }))} />
                 </FormField>
                 <FormField label="WSP factor" htmlFor="d-wsp" hint="WSP = MRP × factor">
                   <NumberInput id="d-wsp" value={deal.wspFactor} onChange={(v) => setDeal((d) => ({ ...d, wspFactor: v ?? 0 }))} />

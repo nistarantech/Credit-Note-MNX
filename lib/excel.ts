@@ -169,15 +169,23 @@ export function readPaste(text: string): SheetFound | null {
 }
 
 /**
- * Sales without an invoice rate take it from the brand's purchase invoices
- * for the same barcode, when it differs from MRP × WSP factor.
+ * Links sales to the brand's invoices by barcode: the invoice date becomes the
+ * sale's purchase date (it decides the GST rate on the brand's bill), and a
+ * sale without an invoice rate takes the invoice's when it differs from
+ * MRP × WSP factor. The earliest invoice for a barcode is used.
  */
-export function fillWspFromPurchases(sales: Line[], purchases: { barcode: string; rate: number }[], s: Settings): Line[] {
-  const rate = new Map(purchases.filter((p) => p.barcode).map((p) => [p.barcode, p.rate]));
+export function linkPurchases(sales: Line[], purchases: { barcode: string; rate: number; date: string }[], s: Settings): Line[] {
+  const first = new Map<string, { rate: number; date: string }>();
+  for (const p of purchases) {
+    if (!p.barcode) continue;
+    const seen = first.get(p.barcode);
+    if (!seen || p.date < seen.date) first.set(p.barcode, { rate: p.rate, date: p.date });
+  }
   return sales.map((l) => {
-    if (l.wsp !== null || !rate.has(l.barcode)) return l;
-    const r = rate.get(l.barcode)!;
-    return Math.abs(r - l.mrp * s.wspFactor) > 0.01 ? { ...l, wsp: r } : l;
+    const inv = first.get(l.barcode);
+    if (!inv) return l;
+    const wsp = l.wsp ?? (Math.abs(inv.rate - l.mrp * s.wspFactor) > 0.01 ? inv.rate : null);
+    return { ...l, wsp, purchaseDate: l.purchaseDate ?? inv.date };
   });
 }
 

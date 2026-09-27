@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Database, Download, FolderOpen, Plus, Trash2, Upload } from "lucide-react";
+import { Database, Download, FolderOpen, Upload } from "lucide-react";
 import { desktopDb } from "@/lib/persist";
 import { DEFAULT_GLOBALS, useStore, type Data, type Globals } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   PageSection, PageSectionContent, PageSectionDescription, PageSectionMeta, PageSectionSummary, PageSectionTitle,
 } from "@/components/ui-patterns/page-section";
 import { FormField, NumberInput, today } from "@/components/app/fields";
+import { GstHistory } from "@/components/app/gst";
+import { MARGIN_PRESETS, PercentPicker } from "@/components/app/margin-select";
 import { Page } from "@/components/app/page";
 
 function Section({ title, description, children }: { title: string; description: React.ReactNode; children: React.ReactNode }) {
@@ -47,8 +48,6 @@ export default function SettingsPage() {
   const file = useRef<HTMLInputElement>(null);
   const set = (patch: Partial<Globals>) => setGlobals(patch);
   const setBiz = (patch: Partial<Globals["business"]>) => set({ business: { ...g.business, ...patch } });
-  const setSlab = (i: number, patch: Partial<Globals["b2cSlabs"][number]>) =>
-    set({ b2cSlabs: g.b2cSlabs.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
 
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -118,10 +117,10 @@ export default function SettingsPage() {
         <Card>
           <CardContent className="grid grid-cols-3 gap-4">
             <FormField label="EOSS margin" htmlFor="s-disc">
-              <NumberInput id="s-disc" percent value={g.defaults.discMargin} onChange={(v) => set({ defaults: { ...g.defaults, discMargin: v ?? 0 } })} />
+              <PercentPicker id="s-disc" presets={MARGIN_PRESETS} value={g.defaults.discMargin} onChange={(v) => set({ defaults: { ...g.defaults, discMargin: v ?? 0 } })} />
             </FormField>
             <FormField label="Fresh margin" htmlFor="s-fresh">
-              <NumberInput id="s-fresh" percent value={g.defaults.freshMargin} onChange={(v) => set({ defaults: { ...g.defaults, freshMargin: v ?? 0 } })} />
+              <PercentPicker id="s-fresh" presets={MARGIN_PRESETS} value={g.defaults.freshMargin} onChange={(v) => set({ defaults: { ...g.defaults, freshMargin: v ?? 0 } })} />
             </FormField>
             <FormField label="WSP factor" htmlFor="s-wsp" hint="WSP = MRP × factor">
               <NumberInput id="s-wsp" value={g.defaults.wspFactor} onChange={(v) => set({ defaults: { ...g.defaults, wspFactor: v ?? 0 } })} />
@@ -131,84 +130,36 @@ export default function SettingsPage() {
       </Section>
 
       <Section
-        title="GST in the sale price"
-        description="GST the customer paid, included in the sale value. The slab is chosen by bill date and by the per-piece value before GST."
+        title="GST in your sale price"
+        description="GST your customer paid, included in the sale value. A sale uses the period its bill date falls in, then the per-piece value before GST."
       >
         <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Bills from</TableHead>
-                <TableHead>Above ₹ / piece</TableHead>
-                <TableHead>Up to it</TableHead>
-                <TableHead>Above it</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {g.b2cSlabs.map((s, i) => (
-                <TableRow key={i}>
-                  <TableCell><Input type="date" value={s.from} onChange={(e) => setSlab(i, { from: e.target.value })} /></TableCell>
-                  <TableCell><NumberInput value={s.threshold} onChange={(v) => setSlab(i, { threshold: v ?? 0 })} /></TableCell>
-                  <TableCell><NumberInput percent value={s.low} onChange={(v) => setSlab(i, { low: v ?? 0 })} /></TableCell>
-                  <TableCell><NumberInput percent value={s.high} onChange={(v) => setSlab(i, { high: v ?? 0 })} /></TableCell>
-                  <TableCell>
-                    <Button
-                      variant="text"
-                      size="tiny"
-                      className="h-7 w-7 px-0"
-                      disabled={g.b2cSlabs.length < 2}
-                      icon={<Trash2 size={14} strokeWidth={1.5} />}
-                      aria-label="Remove slab"
-                      onClick={() => set({ b2cSlabs: g.b2cSlabs.filter((_, j) => j !== i) })}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <CardContent className="flex flex-col gap-4">
-            <Button
-              variant="default"
-              className="w-fit"
-              icon={<Plus size={14} strokeWidth={1.5} />}
-              onClick={() => set({ b2cSlabs: [...g.b2cSlabs, { from: today(), threshold: 2500, low: 0.05, high: 0.18 }] })}
-            >
-              Add slab
-            </Button>
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <Label htmlFor="s-round">Round GST factor to 4 decimals</Label>
-                <p className="text-xs text-foreground-lighter">0.1071 / 0.0476 / 0.1525 — same as the Excel sheet.</p>
-              </div>
-              <Switch id="s-round" checked={g.roundGstFactor} onCheckedChange={(c) => set({ roundGstFactor: c })} />
+          <GstHistory slabs={g.b2cSlabs} onChange={(b2cSlabs) => set({ b2cSlabs })} />
+          <CardContent className="flex items-center justify-between gap-4 border-t">
+            <div>
+              <Label htmlFor="s-round">Round the GST factor to 4 decimals</Label>
+              <p className="text-xs text-foreground-lighter">0.1071 / 0.0476 / 0.1525 — the same as the Excel sheet.</p>
             </div>
+            <Switch id="s-round" checked={g.roundGstFactor} onCheckedChange={(c) => set({ roundGstFactor: c })} />
           </CardContent>
         </Card>
       </Section>
 
-      <Section title="GST on the brand's bill" description="GST the brand charged you on WSP when it sent the goods.">
+      <Section
+        title="GST on the brand's bill"
+        description="GST the brand charged you on WSP. A sale uses the period its purchase invoice date falls in — goods bought before a rate change keep the old rate."
+      >
         <Card>
-          <CardContent className="grid grid-cols-3 gap-4">
-            <FormField label="WSP above ₹ / piece" htmlFor="s-bt">
-              <NumberInput id="s-bt" value={g.b2b.threshold} onChange={(v) => set({ b2b: { ...g.b2b, threshold: v ?? 0 } })} />
-            </FormField>
-            <FormField label="Up to it" htmlFor="s-bl">
-              <NumberInput id="s-bl" percent value={g.b2b.low} onChange={(v) => set({ b2b: { ...g.b2b, low: v ?? 0 } })} />
-            </FormField>
-            <FormField label="Above it" htmlFor="s-bh">
-              <NumberInput id="s-bh" percent value={g.b2b.high} onChange={(v) => set({ b2b: { ...g.b2b, high: v ?? 0 } })} />
-            </FormField>
-          </CardContent>
+          <GstHistory slabs={g.b2bSlabs} onChange={(b2bSlabs) => set({ b2bSlabs })} />
           <CardFooter className="justify-end border-t">
             <Button
               variant="default"
               onClick={() => {
-                set({ b2cSlabs: DEFAULT_GLOBALS.b2cSlabs, b2b: DEFAULT_GLOBALS.b2b, roundGstFactor: true, cnBasePct: DEFAULT_GLOBALS.cnBasePct });
-                toast.success("GST rules reset to the Excel sheet's");
+                set({ b2cSlabs: DEFAULT_GLOBALS.b2cSlabs, b2bSlabs: DEFAULT_GLOBALS.b2bSlabs, roundGstFactor: true, cnBasePct: DEFAULT_GLOBALS.cnBasePct });
+                toast.success("GST rules reset", { description: "5% / 12% at ₹ 1,000 until 21 Sep 2025, then 5% / 18% at ₹ 2,500" });
               }}
             >
-              Reset GST rules
+              Reset to government rates
             </Button>
           </CardFooter>
         </Card>

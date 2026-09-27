@@ -6,6 +6,7 @@ import { calcSettings, type Brand, type Data, type Globals } from "./store";
 /** A write to the SQLite database; see electron/db.cjs `apply`. */
 type Op =
   | { settings: Record<string, unknown> }
+  | { settingsDelete: string[] }
   | { table: "brands" | "imports" | "claims" | "purchases" | "sales"; upsert?: unknown[]; delete?: string[] };
 
 export interface DesktopDb {
@@ -57,6 +58,21 @@ export function fromSnapshot(s: DbSnapshot): Partial<Data> {
 
 export const isEmpty = (d: Partial<Data>) => !d.brands?.length && !d.sales?.length && !d.claims?.length;
 
+/**
+ * Settings rows to bring the database's `settings` table in line with the
+ * current shape: keys it lacks (added since) are written, keys no longer used
+ * (e.g. the old single `b2b` GST rule) are removed.
+ */
+export function settingsFixups(raw: Record<string, unknown>, globals: Globals): Op[] {
+  const known = new Set<string>([...Object.keys(globals), "currentBrandId"]);
+  const missing = Object.fromEntries(Object.entries(globals).filter(([k]) => !(k in raw)));
+  const stale = Object.keys(raw).filter((k) => !known.has(k));
+  const ops: Op[] = [];
+  if (Object.keys(missing).length) ops.push({ settings: missing });
+  if (stale.length) ops.push({ settingsDelete: stale });
+  return ops;
+}
+
 function changed<T extends { id: string }>(prev: T[], next: T[]) {
   const before = new Map(prev.map((x) => [x.id, x]));
   const ids = new Set(next.map((x) => x.id));
@@ -86,7 +102,7 @@ export function diff(prev: Data, next: Data): Op[] {
   const sales = changed(prev.sales, next.sales);
 
   const g = prev.globals, n = next.globals;
-  const rulesChanged = g.b2cSlabs !== n.b2cSlabs || g.roundGstFactor !== n.roundGstFactor || g.b2b !== n.b2b;
+  const rulesChanged = g.b2cSlabs !== n.b2cSlabs || g.roundGstFactor !== n.roundGstFactor || g.b2bSlabs !== n.b2bSlabs;
   const retermed = new Set(brands.upsert.map((b) => b.id));
   const saleIds = new Set(sales.upsert.map((s) => s.id));
   const salesToSave = rulesChanged

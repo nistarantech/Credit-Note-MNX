@@ -3,12 +3,27 @@
 
 export type SaleType = "DISC" | "FRESH";
 
+/**
+ * One period of GST on apparel: from `from` onward, a piece worth up to
+ * `threshold` (before GST) is taxed at `low`, above it at `high`. The list of
+ * slabs is the rate history — e.g. 5%/12% at ₹1,000 until 21 Sep 2025, then
+ * 5%/18% at ₹2,500 from 22 Sep 2025 (GST 2.0).
+ */
 export interface GstSlab {
-  from: string; // yyyy-mm-dd, slab applies to bills on/after this date
+  from: string; // yyyy-mm-dd, applies to bills on/after this date
   threshold: number; // per-piece value (excl. GST) above which the high rate applies
   low: number;
   high: number;
 }
+
+/** The GST rates notified for apparel, for the rate dropdowns. */
+export const GST_RATES = [0, 0.05, 0.12, 0.18, 0.28];
+
+/** Rate history before and after GST 2.0 (22 Sep 2025). */
+export const DEFAULT_GST_SLABS: GstSlab[] = [
+  { from: "2000-01-01", threshold: 1000, low: 0.05, high: 0.12 },
+  { from: "2025-09-22", threshold: 2500, low: 0.05, high: 0.18 },
+];
 
 /**
  * A brand-specific margin for sales of one type up to a discount level, e.g.
@@ -30,7 +45,7 @@ export interface Settings {
   wspFactor: number; // WSP = MRP x factor when not given (0.625 = MRP / 1.6)
   b2cSlabs: GstSlab[]; // GST inside the retail sale price (B-C)
   roundGstFactor: boolean; // sheet uses 0.1071 / 0.0476 / 0.1525 (4 decimals)
-  b2b: { threshold: number; low: number; high: number }; // GST on company bill (B-B)
+  b2bSlabs: GstSlab[]; // GST on the brand's bill (B-B), by invoice date
   cnBasePct: number; // CN % is taken on dispatch MRP x this (90%)
   dispatch: { qty: number; mrp: number; wsp: number; gst: number };
 }
@@ -49,17 +64,22 @@ export interface Line {
   qty: number;
   wsp: number | null; // per-piece WSP from company invoice; null = MRP x wspFactor
   gstB2B: number | null; // total B-B GST override; null = slab on WSP
+  marginOverride?: number | null; // custom margin for this sale; null = the brand's terms
+  gstRateOverride?: number | null; // GST rate in the sale price; null = rate history
+  purchaseDate?: string | null; // brand's invoice date, picks the B-B slab; null = sale date
 }
 
 export interface Row extends Line {
   mrpValue: number; // N
   discAmt: number; // O / P
   realization: number; // Q
-  gstRate: number; // B-C rate picked from slab
+  gstRate: number; // B-C rate picked from slab (or the override)
   gstFactor: number; // S
   gstB2C: number; // R
   marginPct: number;
+  marginCustom: boolean; // marginPct came from marginOverride, not the brand's terms
   margin: number; // T
+  gstB2BRate: number; // B-B rate used when gstB2B isn't given
   netPayable: number; // U
   wspValue: number; // W
   gstB2BValue: number; // X
@@ -71,15 +91,20 @@ export const DEFAULT_SETTINGS: Settings = {
   discMargin: 0.2,
   marginSlabs: [],
   wspFactor: 0.625,
-  b2cSlabs: [
-    { from: "2000-01-01", threshold: 1000, low: 0.05, high: 0.12 },
-    { from: "2025-09-22", threshold: 2500, low: 0.05, high: 0.18 },
-  ],
+  b2cSlabs: DEFAULT_GST_SLABS,
   roundGstFactor: true,
-  b2b: { threshold: 1000, low: 0.05, high: 0.12 },
+  b2bSlabs: DEFAULT_GST_SLABS,
   cnBasePct: 0.9,
   dispatch: { qty: 0, mrp: 0, wsp: 0, gst: 0 },
 };
+
+/** Settings saved before the B-B rate history had a single `b2b` rule; give them one. */
+export function withGstHistory<T extends Partial<Settings> & { b2b?: { threshold: number; low: number; high: number } }>(s: T): T & Pick<Settings, "b2bSlabs"> {
+  if (s.b2bSlabs?.length) return s as T & Pick<Settings, "b2bSlabs">;
+  const b2bSlabs = s.b2b ? [{ from: "2000-01-01", ...s.b2b }, DEFAULT_GST_SLABS[1]] : DEFAULT_GST_SLABS;
+  const { b2b: _old, ...rest } = s;
+  return { ...(rest as T), b2bSlabs };
+}
 
 export function slabFor(date: string, slabs: GstSlab[]): GstSlab {
   const sorted = [...slabs].sort((a, b) => a.from.localeCompare(b.from));
@@ -101,22 +126,25 @@ export function calcRow(l: Line, s: Settings): Row {
   const discAmt = mrpValue * l.disc;
   const realization = mrpValue - discAmt;
 
-  // B-C GST is inclusive in the sale price. Slab is chosen on the per-piece
-  // value before GST (realization / (1 + low rate)).
+  // B-C GST is inclusive in the sale price. Slab is chosen by bill date, then
+  // on the per-piece value before GST (realization / (1 + low rate)).
   const slab = slabFor(l.date, s.b2cSlabs);
   const perPiece = l.qty ? realization / l.qty : 0;
-  const gstRate = perPiece / (1 + slab.low) > slab.threshold ? slab.high : slab.low;
+  const gstRate = l.gstRateOverride ?? (perPiece / (1 + slab.low) > slab.threshold ? slab.high : slab.low);
   const rawFactor = gstRate / (1 + gstRate);
   const gstFactor = s.roundGstFactor ? Math.round(rawFactor * 1e4) / 1e4 : rawFactor;
   const gstB2C = realization * gstFactor;
 
-  const marginPct = marginFor(l.type, l.disc, s);
+  const marginCustom = l.marginOverride !== null && l.marginOverride !== undefined;
+  const marginPct = marginCustom ? l.marginOverride! : marginFor(l.type, l.disc, s);
   const margin = (realization - gstB2C) * marginPct;
 
   const wspUnit = l.wsp ?? l.mrp * s.wspFactor;
   const wspValue = wspUnit * l.qty;
-  const b2bRate = wspUnit > s.b2b.threshold ? s.b2b.high : s.b2b.low;
-  const gstB2BValue = l.gstB2B ?? wspValue * b2bRate;
+  // B-B GST follows the rate in force when the brand invoiced the goods.
+  const b2bSlab = slabFor(l.purchaseDate || l.date, s.b2bSlabs);
+  const gstB2BRate = wspUnit > b2bSlab.threshold ? b2bSlab.high : b2bSlab.low;
+  const gstB2BValue = l.gstB2B ?? wspValue * gstB2BRate;
 
   const netPayable = realization - gstB2C - margin + gstB2BValue;
   const cn = wspValue + gstB2BValue - netPayable;
@@ -130,7 +158,9 @@ export function calcRow(l: Line, s: Settings): Row {
     gstFactor,
     gstB2C,
     marginPct,
+    marginCustom,
     margin,
+    gstB2BRate,
     netPayable,
     wspValue,
     gstB2BValue,

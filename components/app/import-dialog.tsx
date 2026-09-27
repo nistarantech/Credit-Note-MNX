@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { FileSpreadsheet, Upload } from "lucide-react";
 import { inr, summarize, uid, type Settings } from "@/lib/calc";
-import { fillWspFromPurchases, monthsOf, readPaste, readSheet, type Cell, type SheetFound } from "@/lib/excel";
+import { linkPurchases, monthsOf, readPaste, readSheet, type Cell, type SheetFound } from "@/lib/excel";
 import { monthLabel } from "@/lib/month";
 import { useStore, type Brand, type ImportRecord, type Purchase, type Sale } from "@/lib/store";
 import { Admonition } from "@/components/ui-patterns/admonition";
@@ -101,7 +101,7 @@ export function ImportDialog({
     }
     const knownRates = [...data.purchases.filter((p) => p.brandId === brand.id), ...newBuys];
     for (const f of active) {
-      for (const l of fillWspFromPurchases(f.sales, knownRates, settings)) {
+      for (const l of linkPurchases(f.sales, knownRates, settings)) {
         newSales.push({ ...l, brandId: brand.id, claimId: null, importId: rec("sales", l.date.slice(0, 7), f.sheet) });
       }
     }

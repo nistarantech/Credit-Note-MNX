@@ -4,7 +4,7 @@
 // brand → month → sales / purchases → claim.
 const { DatabaseSync } = require("node:sqlite");
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -109,6 +109,9 @@ CREATE TABLE IF NOT EXISTS sales (
   qty           REAL NOT NULL,
   wsp           REAL,                        -- per piece from invoice; NULL = MRP x WSP factor
   gst_b2b       REAL,                        -- override; NULL = slab
+  margin_override   REAL,                    -- custom margin for this sale; NULL = the brand's terms
+  gst_rate_override REAL,                    -- GST rate in the sale price; NULL = rate history
+  purchase_date     TEXT,                    -- brand's invoice date (picks the B-B GST rate)
   import_id     TEXT REFERENCES imports(id) ON DELETE SET NULL,
   claim_id      TEXT REFERENCES claims(id) ON DELETE SET NULL,
   mrp_value     REAL NOT NULL,
@@ -150,7 +153,8 @@ CREATE INDEX IF NOT EXISTS purchases_brand_month ON purchases(brand_id, month);
 CREATE INDEX IF NOT EXISTS purchases_barcode ON purchases(brand_id, barcode);
 
 -- One row per brand per month: what was sold, what it earns, what is claimed.
-CREATE VIEW IF NOT EXISTS monthly_summary AS
+DROP VIEW IF EXISTS monthly_summary;
+CREATE VIEW monthly_summary AS
 SELECT
   b.name                                                AS brand,
   s.month                                               AS month,
@@ -161,6 +165,7 @@ SELECT
   ROUND(SUM(s.mrp_value), 2)                            AS mrp_value,
   ROUND(SUM(s.realization), 2)                          AS sale_value,
   ROUND(SUM(s.margin), 2)                               AS your_margin,
+  SUM(CASE WHEN s.margin_override IS NOT NULL THEN 1 ELSE 0 END) AS custom_margin_lines,
   ROUND(SUM(s.cn), 2)                                   AS cn_due,
   ROUND(SUM(CASE WHEN s.claim_id IS NULL THEN s.cn ELSE 0 END), 2) AS cn_unclaimed,
   ROUND(SUM(CASE WHEN s.claim_id IS NOT NULL THEN s.cn ELSE 0 END), 2) AS cn_claimed
@@ -192,7 +197,8 @@ const brandObj = (r, slabs) => ({
 const saleRow = (s) => ({
   id: s.id, brand_id: s.brandId, month: s.date.slice(0, 7), bill_date: s.date, bill_no: s.billNo, barcode: s.barcode,
   division: s.division, department: s.department, ageing: s.ageing, sale_type: s.type, disc: s.disc, mrp: s.mrp, qty: s.qty,
-  wsp: s.wsp, gst_b2b: s.gstB2B, import_id: s.importId ?? null, claim_id: s.claimId,
+  wsp: s.wsp, gst_b2b: s.gstB2B, margin_override: s.marginOverride ?? null, gst_rate_override: s.gstRateOverride ?? null,
+  purchase_date: s.purchaseDate ?? null, import_id: s.importId ?? null, claim_id: s.claimId,
   mrp_value: s.calc.mrpValue, realization: s.calc.realization, gst_rate: s.calc.gstRate, gst_b2c: s.calc.gstB2C,
   margin_pct: s.calc.marginPct, margin: s.calc.margin, net_payable: s.calc.netPayable, wsp_value: s.calc.wspValue,
   gst_b2b_value: s.calc.gstB2BValue, cn: s.calc.cn,
@@ -200,7 +206,8 @@ const saleRow = (s) => ({
 const saleObj = (r) => ({
   id: r.id, brandId: r.brand_id, date: r.bill_date, billNo: r.bill_no, barcode: r.barcode, division: r.division,
   department: r.department, ageing: r.ageing, type: r.sale_type, disc: r.disc, mrp: r.mrp, qty: r.qty, wsp: r.wsp,
-  gstB2B: r.gst_b2b, importId: r.import_id, claimId: r.claim_id,
+  gstB2B: r.gst_b2b, marginOverride: r.margin_override, gstRateOverride: r.gst_rate_override,
+  purchaseDate: r.purchase_date, importId: r.import_id, claimId: r.claim_id,
 });
 
 const purchaseRow = (p) => ({
@@ -254,9 +261,24 @@ function upsertSql(table, row) {
           ON CONFLICT(id) DO UPDATE SET ${updates}`;
 }
 
+// Columns added after a table first shipped: [table, column, definition].
+const ADDED_COLUMNS = [
+  ["sales", "margin_override", "REAL"],
+  ["sales", "gst_rate_override", "REAL"],
+  ["sales", "purchase_date", "TEXT"],
+];
+
+function migrate(db) {
+  for (const [table, column, def] of ADDED_COLUMNS) {
+    const has = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+    if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+  }
+}
+
 function open(file) {
   const db = new DatabaseSync(file);
   db.exec(SCHEMA);
+  migrate(db);
   db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)").run(String(SCHEMA_VERSION));
   const stmts = new Map();
   const prep = (sql) => {
@@ -283,6 +305,10 @@ function open(file) {
     db.exec("BEGIN");
     try {
       for (const op of ops) {
+        if (op.settingsDelete) {
+          for (const key of op.settingsDelete) prep("DELETE FROM settings WHERE key = ?").run(key);
+          continue;
+        }
         if (op.settings) {
           for (const [key, value] of Object.entries(op.settings)) {
             prep("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, JSON.stringify(value));

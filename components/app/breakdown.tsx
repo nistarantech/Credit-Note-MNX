@@ -27,7 +27,7 @@ export function Breakdown({ row, className }: { row: Row; className?: string }) 
           <Figure label="Sale value" value={inr(row.realization)} emphasis />
           <Figure label={`Less GST included in sale (${pc(row.gstRate)} slab)`} value={`− ${inr(row.gstB2C)}`} muted />
           <Figure label="Sale value before GST" value={inr(notOfTax)} emphasis />
-          <Figure label={`Less your margin ${pc(row.marginPct)}`} value={`− ${inr(row.margin)}`} muted />
+          <Figure label={`Less your margin ${pc(row.marginPct)}${row.marginCustom ? " (custom)" : ""}`} value={`− ${inr(row.margin)}`} muted />
           <Figure label="Brand's share" value={inr(notOfTax - row.margin)} emphasis />
           <Figure label="Add GST on brand's bill" value={`+ ${inr(row.gstB2BValue)}`} muted />
           <Figure label="You should pay the brand" value={inr(row.netPayable)} emphasis />
@@ -37,7 +37,7 @@ export function Breakdown({ row, className }: { row: Row; className?: string }) 
         <p className="heading-meta text-foreground-lighter mb-1">Brand's invoice (your purchase)</p>
         <dl className="divide-y">
           <Figure label={`WSP (${inr(row.wspValue / (row.qty || 1))} / pc)`} value={inr(row.wspValue)} />
-          <Figure label="GST on WSP" value={`+ ${inr(row.gstB2BValue)}`} muted />
+          <Figure label={row.gstB2B === null ? `GST on WSP (${pc(row.gstB2BRate)})` : "GST on WSP (from invoice)"} value={`+ ${inr(row.gstB2BValue)}`} muted />
           <Figure label="You paid the brand" value={inr(invoice)} emphasis />
         </dl>
       </CardContent>
