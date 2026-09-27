@@ -75,9 +75,53 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
         </dl>
       </section>
 
+      <section className="border-b py-6">
+        <p className="heading-meta text-foreground-lighter mb-2">Sales in this claim</p>
+        <Table className="text-sm">
+          <TableHeader>
+            <TableRow>
+              <TableHead />
+              <TableHead className="text-right">Pieces</TableHead>
+              <TableHead className="text-right">MRP value</TableHead>
+              <TableHead className="text-right">Sale value</TableHead>
+              <TableHead className="text-right">WSP</TableHead>
+              <TableHead className="text-right">Our margin</TableHead>
+              <TableHead className="text-right">Credit</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {([["EOSS (discounted)", s.disc, s.eossCn], ["Fresh (full price)", s.fresh, s.freshCn]] as const).map(([label, t, cn]) => (
+              <TableRow key={label}>
+                <TableCell className="text-foreground-light">{label}</TableCell>
+                <TableCell className="text-right tabular-nums">{inr(t.qty, 0)}</TableCell>
+                <TableCell className="text-right tabular-nums">{inr(t.mrpValue)}</TableCell>
+                <TableCell className="text-right tabular-nums">{inr(t.realization)}</TableCell>
+                <TableCell className="text-right tabular-nums">{inr(t.wspValue)}</TableCell>
+                <TableCell className="text-right tabular-nums">{inr(t.margin)}</TableCell>
+                <TableCell className="text-right tabular-nums">{inr(cn)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableCell>Total</TableCell>
+              <TableCell className="text-right tabular-nums">{inr(s.all.qty, 0)}</TableCell>
+              <TableCell className="text-right tabular-nums">{inr(s.all.mrpValue)}</TableCell>
+              <TableCell className="text-right tabular-nums">{inr(s.all.realization)}</TableCell>
+              <TableCell className="text-right tabular-nums">{inr(s.all.wspValue)}</TableCell>
+              <TableCell className="text-right tabular-nums">{inr(s.all.margin)}</TableCell>
+              <TableCell className="text-right tabular-nums">{inr(s.totalCn)}</TableCell>
+            </TableRow>
+          </TableFooter>
+        </Table>
+        <p className="mt-2 text-xs text-foreground-lighter">
+          EOSS credit is worked out on the EOSS sales together (below); fresh credit sale by sale (annexure).
+        </p>
+      </section>
+
       <section className="grid grid-cols-2 gap-10 border-b py-6">
         <div>
-          <p className="heading-meta text-foreground-lighter mb-1">Billing working — EOSS</p>
+          <p className="heading-meta text-foreground-lighter mb-1">Billing working — EOSS sales only · {inr(b.qty, 0)} of {inr(s.all.qty, 0)} pcs</p>
           <dl className="divide-y">
             <Figure label="Pieces sold" value={inr(b.qty, 0)} />
             <Figure label="MRP value" value={inr(b.mrpValue)} />
@@ -87,7 +131,7 @@ export function ClaimDoc({ business, number, date, from, to, remarks, brand, set
           </dl>
         </div>
         <div>
-          <p className="heading-meta text-foreground-lighter mb-1">Margin working — EOSS</p>
+          <p className="heading-meta text-foreground-lighter mb-1">Margin working — EOSS sales only</p>
           <dl className="divide-y">
             <Figure label="Sale value (R.V.)" value={inr(m.rv)} />
             {s.disc.flatDiscAmt ? <Figure label="(after flat discounts of)" value={inr(s.disc.flatDiscAmt)} muted /> : null}

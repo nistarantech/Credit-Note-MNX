@@ -69,7 +69,19 @@ export function claimSheets({ business, number, date, from, to, remarks, brand, 
   pair("First season", text(brand.firstSeason || "—"));
   gap();
 
-  rows.push([heading("Billing working — EOSS"), null]);
+  rows.push([heading("Sales in this claim"), null]);
+  for (const [label, t, cn] of [["EOSS (discounted)", s.disc, s.eossCn], ["Fresh (full price)", s.fresh, s.freshCn], ["Total", s.all, s.totalCn]] as const) {
+    const b = label === "Total" ? "bold" : undefined;
+    rows.push([text(label, b ? { fontWeight: b } : {}), text(`${t.qty} pcs`, b ? { fontWeight: b } : {})]);
+    pair("   MRP value", money(t.mrpValue));
+    pair("   Sale value", money(t.realization, b ? { fontWeight: b } : {}));
+    pair("   WSP", money(t.wspValue));
+    pair("   Our margin", money(t.margin));
+    pair("   Credit", money(cn, b ? { fontWeight: b } : {}));
+  }
+  gap();
+
+  rows.push([heading(`Billing working — EOSS sales only (${b.qty} of ${s.all.qty} pcs)`), null]);
   pair("Pieces sold", num(b.qty));
   pair("MRP value", money(b.mrpValue));
   pair("WSP", money(b.wsp));
@@ -77,7 +89,7 @@ export function claimSheets({ business, number, date, from, to, remarks, brand, 
   rows.push([bold("Billed to us by the brand"), money(b.total, { fontWeight: "bold" })]);
   gap();
 
-  rows.push([heading("Margin working — EOSS"), null]);
+  rows.push([heading("Margin working — EOSS sales only"), null]);
   pair("Sale value (R.V.)", money(m.rv));
   if (s.disc.flatDiscAmt) pair("(after flat discounts of)", money(s.disc.flatDiscAmt));
   pair("Less: GST in sale", money(m.taxB2C));
