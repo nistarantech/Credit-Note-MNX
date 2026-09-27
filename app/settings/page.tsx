@@ -113,6 +113,22 @@ export default function SettingsPage() {
         </Card>
       </Section>
 
+      <Section title="Checking supplier CNs" description="How close a credited amount must be to what you claimed to count as matched, line by line.">
+        <Card>
+          <CardContent className="grid grid-cols-3 gap-4">
+            <FormField label="Amount" htmlFor="s-tol-amt" hint="Per line, ₹">
+              <NumberInput id="s-tol-amt" prefix="₹" value={g.tolerance.amount} onChange={(v) => set({ tolerance: { ...g.tolerance, amount: Math.max(0, v ?? 0) } })} />
+            </FormField>
+            <FormField label="GST" htmlFor="s-tol-gst" hint="Rounding allowed, ₹">
+              <NumberInput id="s-tol-gst" prefix="₹" value={g.tolerance.gst} onChange={(v) => set({ tolerance: { ...g.tolerance, gst: Math.max(0, v ?? 0) } })} />
+            </FormField>
+            <FormField label="Quantity" htmlFor="s-tol-qty" hint="Pieces">
+              <NumberInput id="s-tol-qty" value={g.tolerance.qty} onChange={(v) => set({ tolerance: { ...g.tolerance, qty: Math.max(0, v ?? 0) } })} />
+            </FormField>
+          </CardContent>
+        </Card>
+      </Section>
+
       <Section title="Default deal" description="Filled in for new brands. Each brand can have its own.">
         <Card>
           <CardContent className="grid grid-cols-3 gap-4">

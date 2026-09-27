@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { toast } from "sonner";
 import { DEFAULT_SETTINGS, uid, withGstHistory, type Line, type MarginSlab, type Settings, type TermChange } from "./calc";
 import { desktopDb, diff, fromSnapshot, isEmpty, settingsFixups } from "./persist";
+import { DEFAULT_TOLERANCE, settlementOf, type ExpectedLine, type Tolerance } from "./recon";
 
 /**
  * A brand (supplier) you buy from and claim credit notes from. Every brand has
@@ -33,7 +34,140 @@ export interface Brand {
   dispatch: Settings["dispatch"];
   active: boolean;
   memo: string;
+  supplierId: string | null; // the company / distributor that bills this brand
   createdAt: string;
+}
+
+/** How GST sits on a supplier's credit note. */
+export type GstTreatment = "on_top" | "included" | "none";
+
+/** The company or distributor that bills you and issues the credit notes. */
+export interface Supplier {
+  id: string;
+  code: string;
+  name: string;
+  gstNo: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  cnCycle: "monthly" | "quarterly" | "season" | "other";
+  gstTreatment: GstTreatment;
+  settlementMode: "adjustment" | "refund" | "credit_note";
+  active: boolean;
+  createdAt: string;
+}
+
+/** A SKU's prices from a date on. MRP, WSP and purchase rate are kept apart — never interchangeable. */
+export interface SkuPrice {
+  from: string;
+  mrp: number;
+  wsp: number | null;
+  purchaseRate: number | null;
+  gstRate: number | null;
+  source: string;
+}
+
+export interface Sku {
+  id: string;
+  brandId: string;
+  sku: string;
+  barcode: string;
+  name: string;
+  division: string;
+  department: string;
+  category: string;
+  subCategory: string;
+  size: string;
+  colour: string;
+  hsn: string;
+  season: string;
+  cnEligible: boolean;
+  active: boolean;
+  prices: SkuPrice[];
+  createdAt: string;
+}
+
+/** What a scheme's credit note is worked out on. */
+export type CnBase = "wsp" | "purchase_rate" | "mrp" | "taxable" | "sale_value" | "qty" | "fixed_line";
+
+/** A scheme / CN rule agreed with a brand, for a date range. */
+export interface CnRule {
+  id: string;
+  brandId: string;
+  code: string;
+  name: string;
+  appliesOn: "purchases" | "sales";
+  from: string;
+  to: string | null;
+  base: CnBase;
+  rate: number; // 0.2 = 20% on value bases; ₹ for qty / fixed_line
+  gstTreatment: GstTreatment;
+  gstRate: number | null; // null = the line's own GST rate
+  match: { barcodes: string[]; category: string; division: string; department: string };
+  minQty: number | null;
+  maxQty: number | null;
+  priority: number; // lower runs first
+  stacking: boolean; // also applies on top of another rule
+  active: boolean; // only active rules are used
+  remarks: string;
+  createdAt: string;
+}
+
+export interface SupplierCnLine {
+  id: string;
+  invoiceNo: string;
+  barcode: string; // SKU or barcode
+  qty: number | null;
+  basic: number;
+  gstRate: number | null;
+  gst: number;
+  gross: number;
+  remarks: string;
+}
+
+/** A credit note the supplier actually issued. */
+export interface SupplierCn {
+  id: string;
+  number: string;
+  brandId: string;
+  claimId: string | null;
+  date: string;
+  from: string | null;
+  to: string | null;
+  basic: number;
+  gst: number;
+  gross: number;
+  disputed: boolean; // under dispute: not counted as received
+  fileName: string;
+  storedPath: string | null;
+  remarks: string;
+  lines: SupplierCnLine[];
+  createdAt: string;
+}
+
+/** A step in closing a claim: CN adjusted against payables, refunded, or a shortfall written off. */
+export interface SettlementEntry {
+  id: string;
+  claimId: string;
+  date: string;
+  kind: "adjusted" | "refund" | "write_off";
+  amount: number;
+  reference: string;
+  remarks: string;
+  createdAt: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  at: string;
+  module: "brands" | "skus" | "rules" | "claims" | "supplier_cns" | "settlements" | "settings" | "suppliers";
+  recordId: string;
+  action: string;
+  detail: string;
+  before: unknown;
+  after: unknown;
+  reason: string;
 }
 
 export interface Sale extends Line {
@@ -75,13 +209,25 @@ export interface ImportRecord {
   importedAt: string;
 }
 
+/** Where a claim is: claimed → CN received → settled, or disputed. The first three move on their own. */
+export type ClaimStatus = "claimed" | "cn_received" | "settled" | "disputed";
+
+export const CLAIM_STATUS_LABEL: Record<ClaimStatus, string> = {
+  claimed: "Claimed",
+  cn_received: "CN received",
+  settled: "Settled",
+  disputed: "Disputed",
+};
+
 /**
  * A credit note claim you raised on a brand — a frozen copy of the brand's
- * terms and the sales it covers — and what the brand actually credited.
+ * terms and the sales (or scheme lines) it covers. What the brand credited is
+ * in its supplier CNs; how it was closed, in its settlement entries.
  */
 export interface Claim {
   id: string;
   number: string; // your claim reference
+  kind: "sales" | "scheme"; // margin support on your sales, or a scheme rule's CN
   date: string;
   month: string | null; // "2025-09" for a month-end claim
   from: string;
@@ -89,16 +235,17 @@ export interface Claim {
   brandId: string;
   brand: Brand;
   settings: Settings;
-  lines: Line[];
+  lines: Line[]; // sales claims
+  schemeLines: ExpectedLine[]; // scheme claims
   total: number;
+  approvedAmount: number | null; // what the supplier agreed to; null = the claim total
   remarks: string;
   createdAt: string;
-  status: "raised" | "received";
-  received: { cnNumber: string; cnDate: string; amount: number } | null; // the brand's credit note
+  status: ClaimStatus;
 }
 
 /** What raiseClaim needs; number, status and dates are filled in by the store. */
-export type ClaimDraft = Omit<Claim, "id" | "number" | "createdAt" | "status" | "received">;
+export type ClaimDraft = Omit<Claim, "id" | "number" | "createdAt" | "status" | "approvedAmount">;
 
 /** You — the retailer claiming the credit notes; printed at the top of each claim. */
 export interface Business {
@@ -119,15 +266,22 @@ export interface Globals {
   nextClaimNo: number;
   business: Business;
   defaults: { freshMargin: number; discMargin: number; wspFactor: number };
+  tolerance: Tolerance; // reconciliation: ₹ per line, ₹ GST per line, pieces
 }
 
 export interface Data {
   globals: Globals;
+  suppliers: Supplier[];
   brands: Brand[];
+  skus: Sku[];
+  rules: CnRule[];
   sales: Sale[];
   purchases: Purchase[];
   imports: ImportRecord[];
   claims: Claim[];
+  supplierCns: SupplierCn[];
+  settlements: SettlementEntry[];
+  audit: AuditEntry[];
   currentBrandId: string | null;
 }
 
@@ -144,9 +298,13 @@ export const DEFAULT_GLOBALS: Globals = {
     discMargin: DEFAULT_SETTINGS.discMargin,
     wspFactor: DEFAULT_SETTINGS.wspFactor,
   },
+  tolerance: DEFAULT_TOLERANCE,
 };
 
-const EMPTY: Data = { globals: DEFAULT_GLOBALS, brands: [], sales: [], purchases: [], imports: [], claims: [], currentBrandId: null };
+const EMPTY: Data = {
+  globals: DEFAULT_GLOBALS, suppliers: [], brands: [], skus: [], rules: [], sales: [], purchases: [], imports: [], claims: [],
+  supplierCns: [], settlements: [], audit: [], currentBrandId: null,
+};
 const KEY = "credit-note-app:data:v3";
 const OLD_KEY = "credit-note-app:data:v2"; // parties / notes, before brands and claims
 
@@ -171,7 +329,33 @@ export function newBrand(g: Globals, patch: Partial<Brand> = {}): Brand {
     dispatch: { qty: 0, mrp: 0, wsp: 0, gst: 0 },
     active: true,
     memo: "",
+    supplierId: null,
     createdAt: new Date().toISOString(),
+    ...patch,
+  };
+}
+
+export function newSupplier(patch: Partial<Supplier> = {}): Supplier {
+  return {
+    id: uid(), code: "", name: "", gstNo: "", contactPerson: "", phone: "", email: "", address: "",
+    cnCycle: "monthly", gstTreatment: "included", settlementMode: "adjustment", active: true, createdAt: new Date().toISOString(),
+    ...patch,
+  };
+}
+
+export function newSku(brandId: string, patch: Partial<Sku> = {}): Sku {
+  return {
+    id: uid(), brandId, sku: "", barcode: "", name: "", division: "", department: "", category: "", subCategory: "", size: "",
+    colour: "", hsn: "", season: "", cnEligible: true, active: true, prices: [], createdAt: new Date().toISOString(),
+    ...patch,
+  };
+}
+
+export function newRule(brandId: string, patch: Partial<CnRule> = {}): CnRule {
+  return {
+    id: uid(), brandId, code: "", name: "", appliesOn: "purchases", from: new Date().toISOString().slice(0, 10), to: null,
+    base: "wsp", rate: 0.1, gstTreatment: "included", gstRate: null, match: { barcodes: [], category: "", division: "", department: "" },
+    minQty: null, maxQty: null, priority: 10, stacking: false, active: true, remarks: "", createdAt: new Date().toISOString(),
     ...patch,
   };
 }
@@ -201,22 +385,45 @@ function normalize(d: Partial<Data>): Data {
     defaults: { ...DEFAULT_GLOBALS.defaults, ...d.globals?.defaults },
     business: { ...DEFAULT_GLOBALS.business, ...d.globals?.business },
   });
+  // Claims saved before v4 had only raised / received, with the brand's CN kept on the claim.
+  type OldClaim = Omit<Claim, "status"> & { status?: string; received?: { cnNumber: string; cnDate: string; amount: number } | null };
+  const oldStatus: Record<string, ClaimStatus> = { raised: "claimed", received: "cn_received" };
+  const supplierCns = [...(d.supplierCns ?? [])];
+  const claims = ((d.claims ?? []) as OldClaim[]).map(({ received, ...n }): Claim => {
+    if (received && !supplierCns.some((c) => c.claimId === n.id)) {
+      supplierCns.push({
+        id: `cn-${n.id}`, number: received.cnNumber, brandId: n.brandId, claimId: n.id, date: received.cnDate || n.date, from: n.from, to: n.to,
+        basic: received.amount, gst: 0, gross: received.amount, disputed: false, fileName: "", storedPath: null,
+        remarks: "Recorded against the claim before v4", lines: [], createdAt: n.createdAt,
+      });
+    }
+    return {
+      ...n,
+      kind: n.kind ?? "sales",
+      month: n.month ?? null,
+      status: (oldStatus[n.status ?? "raised"] ?? n.status) as ClaimStatus,
+      approvedAmount: n.approvedAmount ?? null,
+      lines: n.lines ?? [],
+      schemeLines: n.schemeLines ?? [],
+      brand: newBrand(globals, n.brand),
+      settings: withGstHistory(n.settings),
+    };
+  });
   return {
     ...EMPTY,
     ...d,
-    globals,
+    globals: { ...globals, tolerance: { ...DEFAULT_TOLERANCE, ...d.globals?.tolerance } },
+    suppliers: (d.suppliers ?? []).map((x) => newSupplier(x)),
     brands: (d.brands ?? []).map((p) => newBrand(globals, p)),
+    skus: (d.skus ?? []).map((x) => newSku(x.brandId, x)),
+    rules: (d.rules ?? []).map((x) => newRule(x.brandId, x)),
     sales: d.sales ?? [],
     purchases: d.purchases ?? [],
     imports: d.imports ?? [],
-    claims: (d.claims ?? []).map((n) => ({
-      ...n,
-      month: n.month ?? null,
-      status: n.status ?? "raised",
-      received: n.received ?? null,
-      brand: newBrand(globals, n.brand),
-      settings: withGstHistory(n.settings),
-    })),
+    claims,
+    supplierCns,
+    settlements: d.settlements ?? [],
+    audit: d.audit ?? [],
   };
 }
 
@@ -289,6 +496,38 @@ function withDispatch(d: Data): Data {
   };
 }
 
+/** Adds an audit entry for a commercially sensitive change. */
+function audited(d: Data, e: Omit<AuditEntry, "id" | "at" | "reason"> & { reason?: string }): Data {
+  const at = new Date().toISOString();
+  const last = d.audit[0];
+  // Typing into a field changes it on every keystroke: fold those into one entry.
+  if (last && last.module === e.module && last.recordId === e.recordId && last.action === e.action && Date.parse(at) - Date.parse(last.at) < 60_000) {
+    return { ...d, audit: [{ ...last, ...e, before: last.before, at, reason: e.reason || last.reason }, ...d.audit.slice(1)] };
+  }
+  return { ...d, audit: [{ ...e, id: uid(), at, reason: e.reason ?? "" }, ...d.audit] };
+}
+
+/**
+ * Moves a claim along on its own: CN received once a supplier CN is linked,
+ * Settled once nothing is pending, back again if those are removed. A
+ * disputed claim is left alone until the user clears it.
+ */
+function syncClaim(d: Data, claimId: string | null): Data {
+  if (!claimId) return d;
+  const c = d.claims.find((x) => x.id === claimId);
+  if (!c || c.status === "disputed") return d;
+  const cns = d.supplierCns.filter((x) => x.claimId === claimId);
+  const st = settlementOf(c, cns, d.settlements.filter((x) => x.claimId === claimId));
+  const next: ClaimStatus = st.status === "settled" && (cns.length || st.writtenOff) ? "settled" : cns.length ? "cn_received" : "claimed";
+  if (next === c.status) return d;
+  return audited(
+    { ...d, claims: d.claims.map((x) => (x.id === claimId ? { ...x, status: next } : x)) },
+    { module: "claims", recordId: claimId, action: "status", detail: `${c.number}: ${CLAIM_STATUS_LABEL[c.status]} → ${CLAIM_STATUS_LABEL[next]} (automatic)`, before: c.status, after: next },
+  );
+}
+
+const upsert = <T extends { id: string }>(list: T[], x: T) => (list.some((y) => y.id === x.id) ? list.map((y) => (y.id === x.id ? x : y)) : [...list, x]);
+
 type Store = ReturnType<typeof useStoreState>;
 const Ctx = createContext<Store | null>(null);
 
@@ -342,11 +581,48 @@ function useStoreState() {
         update((d) => ({
           ...d,
           brands: d.brands.filter((p) => p.id !== id),
+          skus: d.skus.filter((x) => x.brandId !== id),
+          rules: d.rules.filter((x) => x.brandId !== id),
           sales: d.sales.filter((s) => s.brandId !== id),
           purchases: d.purchases.filter((x) => x.brandId !== id),
           imports: d.imports.filter((x) => x.brandId !== id),
           currentBrandId: d.currentBrandId === id ? (d.brands.find((p) => p.id !== id)?.id ?? null) : d.currentBrandId,
         })),
+      saveSupplier: (x: Supplier) => update((d) => ({ ...d, suppliers: upsert(d.suppliers, x) })),
+      deleteSupplier: (id: string) =>
+        update((d) => ({
+          ...d,
+          suppliers: d.suppliers.filter((x) => x.id !== id),
+          brands: d.brands.map((b) => (b.supplierId === id ? { ...b, supplierId: null } : b)),
+        })),
+      /** Save a SKU; a change to its prices is written to the audit log. */
+      saveSku: (x: Sku, reason = "") =>
+        update((d) => {
+          const before = d.skus.find((y) => y.id === x.id);
+          const next = { ...d, skus: upsert(d.skus, x) };
+          if (before && JSON.stringify(before.prices) === JSON.stringify(x.prices)) return next;
+          return audited(next, { module: "skus", recordId: x.id, action: before ? "prices" : "create", detail: `SKU ${x.sku}`, before: before?.prices ?? null, after: x.prices, reason });
+        }),
+      /** Add or refresh many SKUs at once (building the master from invoices). */
+      addSkus: (list: Sku[]) =>
+        update((d) => {
+          const byId = new Map(list.map((x) => [x.id, x]));
+          return { ...d, skus: [...d.skus.map((x) => byId.get(x.id) ?? x), ...list.filter((x) => !d.skus.some((y) => y.id === x.id))] };
+        }),
+      deleteSkus: (ids: string[]) => update((d) => ({ ...d, skus: d.skus.filter((x) => !ids.includes(x.id)) })),
+      saveRule: (r: CnRule, reason = "") =>
+        update((d) => {
+          const before = d.rules.find((y) => y.id === r.id);
+          return audited(
+            { ...d, rules: upsert(d.rules, r) },
+            { module: "rules", recordId: r.id, action: before ? "update" : "create", detail: `Rule ${r.code || r.name}`, before: before ?? null, after: r, reason },
+          );
+        }),
+      deleteRule: (id: string) =>
+        update((d) => {
+          const before = d.rules.find((y) => y.id === id);
+          return audited({ ...d, rules: d.rules.filter((x) => x.id !== id) }, { module: "rules", recordId: id, action: "delete", detail: `Rule ${before?.code || before?.name}`, before, after: null });
+        }),
       saveSale: (s: Sale) =>
         update((d) => ({
           ...d,
@@ -365,27 +641,97 @@ function useStoreState() {
         const ids = new Set(saleIds);
         update((d) => {
           const number = `${d.globals.claimPrefix}${String(d.globals.nextClaimNo).padStart(4, "0")}`;
-          return {
-            ...d,
-            claims: [{ ...n, id, number, createdAt: new Date().toISOString(), status: "raised", received: null }, ...d.claims],
-            sales: d.sales.map((s) => (ids.has(s.id) ? { ...s, claimId: id } : s)),
-            globals: { ...d.globals, nextClaimNo: d.globals.nextClaimNo + 1 },
-          };
+          return audited(
+            {
+              ...d,
+              claims: [{ ...n, id, number, createdAt: new Date().toISOString(), status: "claimed", approvedAmount: null }, ...d.claims],
+              sales: d.sales.map((s) => (ids.has(s.id) ? { ...s, claimId: id } : s)),
+              globals: { ...d.globals, nextClaimNo: d.globals.nextClaimNo + 1 },
+            },
+            { module: "claims", recordId: id, action: "create", detail: `${number} raised on ${n.brand.name} for ₹ ${n.total.toFixed(2)}`, before: null, after: n.total },
+          );
         });
         return id;
       },
       deleteClaim: (id: string) =>
-        update((d) => ({
-          ...d,
-          claims: d.claims.filter((n) => n.id !== id),
-          sales: d.sales.map((s) => (s.claimId === id ? { ...s, claimId: null } : s)),
-        })),
-      /** Record the credit note the brand sent against a claim (null = not received yet). */
-      markReceived: (id: string, received: Claim["received"]) =>
-        update((d) => ({
-          ...d,
-          claims: d.claims.map((c) => (c.id === id ? { ...c, received, status: received ? "received" : "raised" } : c)),
-        })),
+        update((d) => {
+          const c = d.claims.find((x) => x.id === id);
+          return audited(
+            {
+              ...d,
+              claims: d.claims.filter((n) => n.id !== id),
+              sales: d.sales.map((s) => (s.claimId === id ? { ...s, claimId: null } : s)),
+              supplierCns: d.supplierCns.map((x) => (x.claimId === id ? { ...x, claimId: null } : x)),
+              settlements: d.settlements.filter((x) => x.claimId !== id),
+            },
+            { module: "claims", recordId: id, action: "delete", detail: `${c?.number} deleted`, before: c?.total ?? null, after: null },
+          );
+        }),
+      /** Mark a claim disputed (with a reason, kept in the audit log), or clear it back to its normal status. */
+      setDisputed: (id: string, disputed: boolean, reason = "") =>
+        update((d) => {
+          const c = d.claims.find((x) => x.id === id);
+          if (!c || (c.status === "disputed") === disputed) return d;
+          const next = audited(
+            { ...d, claims: d.claims.map((x) => (x.id === id ? { ...x, status: disputed ? ("disputed" as const) : ("claimed" as const) } : x)) },
+            { module: "claims", recordId: id, action: "status", detail: `${c.number}: ${disputed ? "disputed" : "dispute cleared"}`, before: c.status, after: disputed ? "disputed" : "claimed", reason },
+          );
+          return disputed ? next : syncClaim(next, id);
+        }),
+      setApproved: (id: string, amount: number | null, reason = "") =>
+        update((d) => {
+          const c = d.claims.find((x) => x.id === id);
+          if (!c) return d;
+          const next = audited(
+            { ...d, claims: d.claims.map((x) => (x.id === id ? { ...x, approvedAmount: amount } : x)) },
+            { module: "claims", recordId: id, action: "approved_amount", detail: `${c.number} approved amount set to ${amount === null ? "the claim total" : `₹ ${amount.toFixed(2)}`}`, before: c.approvedAmount, after: amount, reason },
+          );
+          return syncClaim(next, id);
+        }),
+      /** Save a credit note the supplier issued; the claims it moves to or from are updated. */
+      saveSupplierCn: (x: SupplierCn, reason = "") =>
+        update((d) => {
+          const before = d.supplierCns.find((y) => y.id === x.id);
+          let next = audited(
+            { ...d, supplierCns: upsert(d.supplierCns, x) },
+            {
+              module: "supplier_cns", recordId: x.id, action: before ? "update" : "create", detail: `Supplier CN ${x.number || "(no number)"} ₹ ${x.gross.toFixed(2)}`,
+              before: before ? { gross: before.gross, claimId: before.claimId, disputed: before.disputed } : null, after: { gross: x.gross, claimId: x.claimId, disputed: x.disputed }, reason,
+            },
+          );
+          next = syncClaim(next, x.claimId);
+          if (before?.claimId && before.claimId !== x.claimId) next = syncClaim(next, before.claimId);
+          return next;
+        }),
+      deleteSupplierCn: (id: string) =>
+        update((d) => {
+          const before = d.supplierCns.find((y) => y.id === id);
+          const next = audited(
+            { ...d, supplierCns: d.supplierCns.filter((x) => x.id !== id) },
+            { module: "supplier_cns", recordId: id, action: "delete", detail: `Supplier CN ${before?.number} deleted`, before: before?.gross ?? null, after: null },
+          );
+          return syncClaim(next, before?.claimId ?? null);
+        }),
+      addSettlement: (e: SettlementEntry) =>
+        update((d) =>
+          syncClaim(
+            audited(
+              { ...d, settlements: [...d.settlements, e] },
+              { module: "settlements", recordId: e.id, action: e.kind, detail: `₹ ${e.amount.toFixed(2)} ${e.kind.replace("_", " ")} ${e.reference}`.trim(), before: null, after: e, reason: e.remarks },
+            ),
+            e.claimId,
+          ),
+        ),
+      deleteSettlement: (id: string) =>
+        update((d) => {
+          const e = d.settlements.find((x) => x.id === id);
+          if (!e) return d;
+          return syncClaim(
+            audited({ ...d, settlements: d.settlements.filter((x) => x.id !== id) }, { module: "settlements", recordId: id, action: "delete", detail: `₹ ${e.amount.toFixed(2)} ${e.kind} removed`, before: e, after: null }),
+            e.claimId,
+          );
+        }),
+      setTolerance: (t: Tolerance) => update((d) => ({ ...d, globals: { ...d.globals, tolerance: t } })),
       /**
        * Add one Excel file's rows. With `replace`, the brand's earlier imported
        * rows for the same months are dropped first (sales already in a claim are

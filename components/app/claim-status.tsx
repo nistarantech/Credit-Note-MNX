@@ -1,11 +1,19 @@
 import { inr } from "@/lib/calc";
-import type { Claim } from "@/lib/store";
+import type { Recon } from "@/lib/recon";
+import { CLAIM_STATUS_LABEL, type Claim } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 
-/** Awaiting CN → Received, or Short ₹x when the brand credited less than claimed. */
-export function ClaimStatus({ c }: { c: Claim }) {
-  if (c.status === "raised") return <Badge variant="warning">Awaiting CN</Badge>;
-  const short = c.total - (c.received?.amount ?? 0);
-  if (Math.abs(short) < 1) return <Badge variant="success">Received</Badge>;
-  return <Badge variant="destructive">{short > 0 ? `Short ₹ ${inr(short, 0)}` : `Over ₹ ${inr(-short, 0)}`}</Badge>;
+const VARIANT = { claimed: "warning", cn_received: "default", settled: "success", disputed: "destructive" } as const;
+
+/** Claimed · CN received · Settled · Disputed. */
+export function ClaimStatus({ c }: { c: Pick<Claim, "status"> }) {
+  return <Badge variant={VARIANT[c.status]}>{CLAIM_STATUS_LABEL[c.status]}</Badge>;
+}
+
+/** What the check against the supplier's CN found, in one badge. */
+export function ReconBadge({ r }: { r: Recon }) {
+  if (r.status === "no_cn") return <span className="text-xs text-foreground-lighter">No CN yet</span>;
+  if (r.status === "matched") return <Badge variant="success">Matched</Badge>;
+  if (r.status === "excess") return <Badge variant="default">Excess ₹ {inr(r.excess, 0)}</Badge>;
+  return <Badge variant="destructive">Short ₹ {inr(r.short, 0)}</Badge>;
 }

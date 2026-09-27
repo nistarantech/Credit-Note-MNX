@@ -7,7 +7,9 @@ import { calcSettings, type Brand, type Data, type Globals } from "./store";
 type Op =
   | { settings: Record<string, unknown> }
   | { settingsDelete: string[] }
-  | { table: "brands" | "imports" | "claims" | "purchases" | "sales"; upsert?: unknown[]; delete?: string[] };
+  | { table: Table; upsert?: unknown[]; delete?: string[] };
+
+type Table = "suppliers" | "brands" | "skus" | "cn_rules" | "imports" | "claims" | "supplier_cns" | "settlements" | "purchases" | "sales" | "audit_log";
 
 export interface DesktopDb {
   load: () => Promise<DbSnapshot>;
@@ -19,6 +21,12 @@ export interface DesktopDb {
 
 export interface DbSnapshot {
   settings: Record<string, unknown>;
+  suppliers: Data["suppliers"];
+  skus: Data["skus"];
+  rules: Data["rules"];
+  supplierCns: Data["supplierCns"];
+  settlements: Data["settlements"];
+  audit: Data["audit"];
   brands: Data["brands"];
   imports: Data["imports"];
   claims: Data["claims"];
@@ -47,6 +55,12 @@ export function fromSnapshot(s: DbSnapshot): Partial<Data> {
   const { currentBrandId, ...globals } = s.settings as Partial<Globals> & { currentBrandId?: string | null };
   return {
     globals: globals as Globals,
+    suppliers: s.suppliers ?? [],
+    skus: s.skus ?? [],
+    rules: s.rules ?? [],
+    supplierCns: s.supplierCns ?? [],
+    settlements: s.settlements ?? [],
+    audit: s.audit ?? [],
     brands: s.brands,
     imports: s.imports,
     claims: s.claims,
@@ -56,7 +70,7 @@ export function fromSnapshot(s: DbSnapshot): Partial<Data> {
   };
 }
 
-export const isEmpty = (d: Partial<Data>) => !d.brands?.length && !d.sales?.length && !d.claims?.length;
+export const isEmpty = (d: Partial<Data>) => !d.brands?.length && !d.sales?.length && !d.claims?.length && !d.suppliers?.length;
 
 /**
  * Settings rows to bring the database's `settings` table in line with the
@@ -100,6 +114,14 @@ export function diff(prev: Data, next: Data): Op[] {
   const claims = changed(prev.claims, next.claims);
   const purchases = changed(prev.purchases, next.purchases);
   const sales = changed(prev.sales, next.sales);
+  const more = {
+    suppliers: changed(prev.suppliers, next.suppliers),
+    skus: changed(prev.skus, next.skus),
+    cn_rules: changed(prev.rules, next.rules),
+    supplier_cns: changed(prev.supplierCns, next.supplierCns),
+    settlements: changed(prev.settlements, next.settlements),
+    audit_log: changed(prev.audit, next.audit),
+  };
 
   const g = prev.globals, n = next.globals;
   const rulesChanged = g.b2cSlabs !== n.b2cSlabs || g.roundGstFactor !== n.roundGstFactor || g.b2bSlabs !== n.b2bSlabs;
@@ -118,17 +140,30 @@ export function diff(prev: Data, next: Data): Op[] {
     });
 
   const ops: Op[] = [];
+  const del = (table: Table, ids: string[]) => ids.length && ops.push({ table, delete: ids });
+  const put = (table: Table, rows: unknown[]) => rows.length && ops.push({ table, upsert: rows });
   // children before parents when deleting, parents before children when saving
-  if (sales.delete.length) ops.push({ table: "sales", delete: sales.delete });
-  if (purchases.delete.length) ops.push({ table: "purchases", delete: purchases.delete });
-  if (claims.delete.length) ops.push({ table: "claims", delete: claims.delete });
-  if (imports.delete.length) ops.push({ table: "imports", delete: imports.delete });
-  if (brands.delete.length) ops.push({ table: "brands", delete: brands.delete });
+  del("settlements", more.settlements.delete);
+  del("supplier_cns", more.supplier_cns.delete);
+  del("sales", sales.delete);
+  del("purchases", purchases.delete);
+  del("claims", claims.delete);
+  del("imports", imports.delete);
+  del("cn_rules", more.cn_rules.delete);
+  del("skus", more.skus.delete);
+  del("brands", brands.delete);
+  del("suppliers", more.suppliers.delete);
   if (Object.keys(settings).length) ops.push({ settings });
-  if (brands.upsert.length) ops.push({ table: "brands", upsert: brands.upsert });
-  if (imports.upsert.length) ops.push({ table: "imports", upsert: imports.upsert });
-  if (claims.upsert.length) ops.push({ table: "claims", upsert: claims.upsert });
-  if (purchases.upsert.length) ops.push({ table: "purchases", upsert: purchases.upsert });
-  if (withWorking.length) ops.push({ table: "sales", upsert: withWorking });
+  put("suppliers", more.suppliers.upsert);
+  put("brands", brands.upsert);
+  put("skus", more.skus.upsert);
+  put("cn_rules", more.cn_rules.upsert);
+  put("imports", imports.upsert);
+  put("claims", claims.upsert);
+  put("supplier_cns", more.supplier_cns.upsert);
+  put("settlements", more.settlements.upsert);
+  put("purchases", purchases.upsert);
+  put("sales", withWorking);
+  put("audit_log", more.audit_log.upsert);
   return ops;
 }

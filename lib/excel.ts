@@ -197,3 +197,129 @@ export function linkPurchases(sales: Line[], purchases: { barcode: string; rate:
 }
 
 export const monthsOf = (dates: string[]) => [...new Set(dates.map((d) => d.slice(0, 7)))].sort();
+
+// ---------- supplier credit notes ----------
+
+type CnField = "number" | "date" | "invoiceNo" | "barcode" | "qty" | "basic" | "gstRate" | "gst" | "cgst" | "sgst" | "igst" | "gross";
+
+const CN_HEADERS: [RegExp, CnField][] = [
+  [/^(cn|creditnote)(no|number|num)/, "number"],
+  [/^(cn|creditnote)date|^date$/, "date"],
+  [/^(invoice|inv|bill)(no|number|num)/, "invoiceNo"],
+  [/barcode|^sku|^ean|^article|^itemcode|^productcode/, "barcode"],
+  [/^qty$|^quantity$|^cnqty$|^pcs$/, "qty"],
+  [/^(basic|taxable|taxablevalue|taxableamount|amount|value|cnamount|basicamount)$/, "basic"],
+  [/^(gst|tax|igst|gstrate)%$|^gstrate$|^taxrate$|^rate%$/, "gstRate"],
+  [/^cgst(amount|amt)?$/, "cgst"],
+  [/^sgst(amount|amt)?$/, "sgst"],
+  [/^igst(amount|amt)?$/, "igst"],
+  [/^(gst|tax|gstamount|taxamount|gstamt)$/, "gst"],
+  [/^(total|net|gross|netamount|totalamount|grossamount|cntotal|linetotal)$/, "gross"],
+];
+
+export interface CnSheet {
+  sheet: string;
+  headerRow: number;
+  number: string; // CN number, when the sheet has one column for it
+  date: string;
+  lines: { invoiceNo: string; barcode: string; qty: number | null; basic: number; gstRate: number | null; gst: number; gross: number }[];
+  skipped: number;
+}
+
+/**
+ * Lines of a supplier's credit note: at least an amount column (basic or
+ * total). GST comes from a GST column, CGST + SGST / IGST, or the GST %.
+ */
+export function readCnSheet(sheet: string, rows: Cell[][]): CnSheet | null {
+  for (let h = 0; h < Math.min(rows.length, 25); h++) {
+    const map = mapHeader(rows[h], CN_HEADERS);
+    if (!map.has("basic") && !map.has("gross")) continue;
+    if (!map.has("barcode") && !map.has("invoiceNo") && !map.has("qty")) continue;
+    const get = (r: Cell[], f: CnField) => (map.has(f) ? r[map.get(f)!] : undefined);
+    const lines: CnSheet["lines"] = [];
+    let skipped = 0;
+    let number = "";
+    let when = "";
+    for (const r of rows.slice(h + 1)) {
+      const basicIn = num(get(r, "basic"));
+      const grossIn = num(get(r, "gross"));
+      const barcode = str(get(r, "barcode"));
+      const invoiceNo = str(get(r, "invoiceNo"));
+      const totalRow = r.some((c) => typeof c === "string" && /^\s*(grand\s*|sub\s*)?total\s*$/i.test(c));
+      if (totalRow || (isNaN(basicIn) && isNaN(grossIn)) || (!barcode && !invoiceNo && isNaN(num(get(r, "qty"))))) {
+        if (r.some((c) => c !== null && c !== undefined && c !== "")) skipped++;
+        continue;
+      }
+      const rateIn = pct(get(r, "gstRate"));
+      const split = [num(get(r, "cgst")), num(get(r, "sgst")), num(get(r, "igst"))].filter((x) => !isNaN(x));
+      let gst = num(get(r, "gst"));
+      if (isNaN(gst) && split.length) gst = split.reduce((a, x) => a + x, 0);
+      let basic = basicIn;
+      if (isNaN(basic)) basic = !isNaN(gst) ? grossIn - gst : !isNaN(rateIn) ? grossIn / (1 + rateIn) : grossIn;
+      if (isNaN(gst)) gst = !isNaN(grossIn) ? grossIn - basic : !isNaN(rateIn) ? basic * rateIn : 0;
+      const gross = isNaN(grossIn) ? basic + gst : grossIn;
+      const qty = num(get(r, "qty"));
+      number ||= str(get(r, "number"));
+      when ||= date(get(r, "date"));
+      lines.push({ invoiceNo, barcode, qty: isNaN(qty) ? null : qty, basic, gstRate: isNaN(rateIn) ? (basic ? gst / basic : null) : rateIn, gst, gross });
+    }
+    if (lines.length) return { sheet, headerRow: h + 1, number, date: when, lines, skipped };
+  }
+  return null;
+}
+
+// ---------- SKU master ----------
+
+type SkuField = "sku" | "barcode" | "name" | "division" | "department" | "category" | "subCategory" | "size" | "colour" | "hsn" | "gstRate" | "mrp" | "wsp" | "purchaseRate" | "season" | "cnEligible" | "from";
+
+const SKU_HEADERS: [RegExp, SkuField][] = [
+  [/^sku(code)?$|^itemcode$|^article(no|code)?$|^style(code)?$/, "sku"],
+  [/^barcode$|^ean$/, "barcode"],
+  [/^(product|item)?(name|description|desc)$/, "name"],
+  [/^division$/, "division"],
+  [/^department$/, "department"],
+  [/^category$/, "category"],
+  [/^sub-?category$/, "subCategory"],
+  [/^size$/, "size"],
+  [/^colou?r$/, "colour"],
+  [/^hsn(code)?$/, "hsn"],
+  [/^gst%?$|^gstrate$|^tax%$/, "gstRate"],
+  [/^mrp$|^rsp$/, "mrp"],
+  [/^wsp$/, "wsp"],
+  [/^purchase(rate|price|cost)$|^cost(price)?$|^landingcost$/, "purchaseRate"],
+  [/^season$/, "season"],
+  [/^cneligible$|^eligible$/, "cnEligible"],
+  [/^effectivefrom$|^from(date)?$|^w\.?e\.?f\.?$/, "from"],
+];
+
+export interface SkuRow {
+  sku: string; barcode: string; name: string; division: string; department: string; category: string; subCategory: string;
+  size: string; colour: string; hsn: string; season: string; cnEligible: boolean;
+  from: string; mrp: number; wsp: number | null; purchaseRate: number | null; gstRate: number | null;
+}
+
+/** A SKU master sheet: needs SKU (or barcode) and MRP. */
+export function readSkuSheet(rows: Cell[][]): SkuRow[] | null {
+  for (let h = 0; h < Math.min(rows.length, 25); h++) {
+    const map = mapHeader(rows[h], SKU_HEADERS);
+    if (!(map.has("sku") || map.has("barcode")) || !map.has("mrp")) continue;
+    const get = (r: Cell[], f: SkuField) => (map.has(f) ? r[map.get(f)!] : undefined);
+    const opt = (v: Cell) => { const n = num(v); return isNaN(n) ? null : n; };
+    const out: SkuRow[] = [];
+    for (const r of rows.slice(h + 1)) {
+      const sku = str(get(r, "sku")) || str(get(r, "barcode"));
+      const mrp = num(get(r, "mrp"));
+      if (!sku || !(mrp > 0)) continue;
+      const gst = pct(get(r, "gstRate"));
+      const elig = str(get(r, "cnEligible")).toLowerCase();
+      out.push({
+        sku, barcode: str(get(r, "barcode")) || sku, name: str(get(r, "name")), division: str(get(r, "division")), department: str(get(r, "department")),
+        category: str(get(r, "category")), subCategory: str(get(r, "subCategory")), size: str(get(r, "size")), colour: str(get(r, "colour")),
+        hsn: str(get(r, "hsn")), season: str(get(r, "season")), cnEligible: !/^(n|no|false|0)$/.test(elig),
+        from: date(get(r, "from")) || "2000-01-01", mrp, wsp: opt(get(r, "wsp")), purchaseRate: opt(get(r, "purchaseRate")), gstRate: isNaN(gst) ? null : gst,
+      });
+    }
+    return out.length ? out : null;
+  }
+  return null;
+}

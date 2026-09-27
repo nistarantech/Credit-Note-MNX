@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Building2, CalendarCheck, Calculator, FileSpreadsheet, FileText } from "lucide-react";
 import { inr } from "@/lib/calc";
 import { useStore } from "@/lib/store";
-import { brandStats } from "@/lib/stats";
+import { ageBucket, ageDays } from "@/lib/recon";
+import { brandStats, claimPosition } from "@/lib/stats";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -25,8 +26,14 @@ export default function Overview() {
   const router = useRouter();
   const perBrand = data.brands.map((b) => ({ b, s: brandStats(data, b) }));
   const toClaim = perBrand.reduce((a, x) => a + x.s.pending.totalCn, 0);
-  const awaiting = data.claims.filter((c) => c.status === "raised");
-  const received = data.claims.reduce((a, c) => a + (c.received?.amount ?? 0), 0);
+  const positions = data.claims.map((c) => ({ c, p: claimPosition(data, c) }));
+  const awaiting = data.claims.filter((c) => c.status === "claimed");
+  const short = positions.reduce((a, { p }) => a + p.recon.short, 0);
+  const open = positions.filter(({ c }) => c.status !== "settled");
+  const buckets = ["0–30", "31–60", "61–90", "90+"].map((b) => {
+    const list = open.filter(({ c }) => ageBucket(ageDays(c.date)) === b);
+    return { b, n: list.length, amount: list.reduce((a, { p }) => a + Math.max(0, p.settle.pending), 0) };
+  });
 
   return (
     <Page
@@ -35,10 +42,10 @@ export default function Overview() {
       actions={<Button variant="default" icon={<Calculator size={14} strokeWidth={1.5} />} asChild><Link href="/calculator/">Quick calculator</Link></Button>}
     >
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <Metric label="Brands" value={String(data.brands.length)} />
         <Metric label="Not yet claimed" value={`₹ ${inr(toClaim)}`} tooltip="Credit notes your unclaimed sales are worth" strong />
-        <Metric label="Awaiting from brands" value={`₹ ${inr(awaiting.reduce((a, c) => a + c.total, 0))}`} tooltip={`${awaiting.length} claims without a credit note yet`} />
-        <Metric label="Credit notes received" value={`₹ ${inr(received)}`} />
+        <Metric label="Awaiting CN" value={`₹ ${inr(awaiting.reduce((a, c) => a + c.total, 0))}`} tooltip={`${awaiting.length} claims without a credit note yet`} />
+        <Metric label="Short credit" value={`₹ ${inr(short)}`} tooltip="Credited less than claimed, line by line" />
+        <Metric label="Not yet settled" value={`₹ ${inr(open.reduce((a, { p }) => a + Math.max(0, p.settle.pending), 0))}`} tooltip={`${open.length} open claims`} />
       </div>
 
       {data.brands.length === 0 ? (
@@ -59,6 +66,22 @@ export default function Overview() {
         </div>
       ) : (
         <div className="grid gap-6 xl:grid-cols-2">
+          <Card className="xl:col-span-2">
+            <CardHeader>
+              <CardTitle>Open claims by age</CardTitle>
+              <CardDescription>Days since the claim date, for claims not yet settled. Follow up the older ones first.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-4 pb-6 md:grid-cols-4">
+              {buckets.map(({ b, n, amount }) => (
+                <div key={b} className="rounded-md border px-4 py-3">
+                  <p className="text-xs text-foreground-lighter">{b} days</p>
+                  <p className={`mt-1 text-lg tabular-nums ${b === "90+" && n ? "text-destructive" : b === "61–90" && n ? "text-warning-600" : "text-foreground"}`}>₹ {inr(amount, 0)}</p>
+                  <p className="text-xs text-foreground-lighter">{n} claim{n === 1 ? "" : "s"}</p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>To claim, by brand</CardTitle>

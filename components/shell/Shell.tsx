@@ -5,8 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 import {
-  Building2, CalendarCheck, Calculator, Check, FolderInput, ChevronsUpDown, FileText, LayoutDashboard, Menu, Monitor, Moon,
-  PanelLeftClose, PanelLeftOpen, Plus, ReceiptText, Settings, Sigma, Sun,
+  Boxes, Building2, CalendarCheck, Calculator, Check, Factory, FolderInput, ChevronsUpDown, FileText, History, LayoutDashboard, Menu, Monitor, Moon,
+  PanelLeftClose, PanelLeftOpen, Plus, ReceiptIndianRupee, ReceiptText, Scale, Settings, Sigma, Sun,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useStore } from "@/lib/store";
@@ -22,12 +22,17 @@ import { useStoredFlag } from "./use-stored-flag";
 const NAV = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/calculator/", label: "Quick calculator", icon: Calculator },
-  { href: "/brands/", label: "Brands", icon: Building2 },
   { href: "/sales/", label: "Sales", icon: ReceiptText },
   { href: "/imports/", label: "Imports", icon: FolderInput },
   { href: "/month-end/", label: "Month-end", icon: CalendarCheck },
   { href: "/claims/", label: "Claims", icon: FileText },
+  { href: "/supplier-cns/", label: "Supplier CNs", icon: ReceiptIndianRupee },
+  { href: "/suppliers/", label: "Suppliers", icon: Factory, divider: true },
+  { href: "/brands/", label: "Brands", icon: Building2 },
+  { href: "/skus/", label: "SKU master", icon: Boxes },
+  { href: "/rules/", label: "CN rules", icon: Scale },
   { href: "/settings/", label: "Settings", icon: Settings, divider: true },
+  { href: "/audit/", label: "Audit log", icon: History },
   { href: "/formulas/", label: "How it's calculated", icon: Sigma },
 ];
 

@@ -67,6 +67,8 @@ export function claimPayload(
   const settings = calcSettings(d.globals, brand);
   return {
     ...opts,
+    kind: "sales",
+    schemeLines: [],
     brandId: brand.id,
     brand,
     settings,

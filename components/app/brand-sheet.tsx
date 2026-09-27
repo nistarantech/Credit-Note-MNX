@@ -100,9 +100,20 @@ export function BrandSheet({
                   <Input id="p-code" value={p.code} onChange={(e) => set({ code: e.target.value.toUpperCase() })} placeholder="CC" className="font-mono" />
                 </FormField>
               </div>
-              <FormField label="GSTIN" htmlFor="p-gst">
-                <Input id="p-gst" value={p.gstNo} onChange={(e) => set({ gstNo: e.target.value.toUpperCase() })} placeholder="22AAAAA0000A1Z5" className="font-mono" />
-              </FormField>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField label="GSTIN" htmlFor="p-gst">
+                  <Input id="p-gst" value={p.gstNo} onChange={(e) => set({ gstNo: e.target.value.toUpperCase() })} placeholder="22AAAAA0000A1Z5" className="font-mono" />
+                </FormField>
+                <FormField label="Supplier" hint={data.suppliers.length ? "Who bills you for this brand" : "Add suppliers on the Suppliers screen"}>
+                  <Select value={p.supplierId ?? "__none"} onValueChange={(v) => set({ supplierId: v === "__none" ? null : v })}>
+                    <SelectTrigger size="small"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">None</SelectItem>
+                      {data.suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <FormField label="Contact person" htmlFor="p-contact">
                   <Input id="p-contact" value={p.contactPerson} onChange={(e) => set({ contactPerson: e.target.value })} />
