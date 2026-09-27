@@ -2,9 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Database, Download, FolderOpen, Upload } from "lucide-react";
+import { Database, Download, FolderOpen, Pencil, Upload } from "lucide-react";
 import { desktopDb } from "@/lib/persist";
-import { DEFAULT_GLOBALS, useStore, type Data, type Globals } from "@/lib/store";
+import { termsFor } from "@/lib/calc";
+import { DEFAULT_GLOBALS, calcSettings, useStore, type Brand, type Data, type Globals } from "@/lib/store";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { BrandSheet } from "@/components/app/brand-sheet";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import {
@@ -18,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   PageSection, PageSectionContent, PageSectionDescription, PageSectionMeta, PageSectionSummary, PageSectionTitle,
 } from "@/components/ui-patterns/page-section";
-import { FormField, NumberInput, today } from "@/components/app/fields";
+import { FormField, NumberInput, fmtDate, today } from "@/components/app/fields";
 import { GstHistory } from "@/components/app/gst";
 import { MARGIN_PRESETS, PercentPicker } from "@/components/app/margin-select";
 import { Page } from "@/components/app/page";
@@ -41,6 +44,7 @@ export default function SettingsPage() {
   const { data, setGlobals, replaceAll } = useStore();
   const g = data.globals;
   const [reset, setReset] = useState(false);
+  const [termsOf, setTermsOf] = useState<Brand | null>(null);
   const [dbInfo, setDbInfo] = useState<{ dir: string; file: string } | null>(null);
   useEffect(() => {
     desktopDb()?.info().then(setDbInfo);
@@ -70,7 +74,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <Page title="Settings" description="Your details and the rules shared by every brand. Each brand's own terms are set on the Brands screen.">
+    <Page title="Settings" description="Your details, each brand's margins, and the rules shared by every brand.">
       <Section title="Your business" description="You, the retailer claiming the credit notes. Printed at the top of every claim.">
         <Card>
           <CardContent className="flex flex-col gap-4">
@@ -111,6 +115,46 @@ export default function SettingsPage() {
             </FormField>
           </CardContent>
         </Card>
+      </Section>
+
+      <Section title="Margins by brand" description="Each brand's own deal — your fresh and EOSS margins, discount slabs and dated changes. Unclaimed sales are recalculated when you change them; claims already raised keep their terms.">
+        <Card>
+          {data.brands.length ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Brand</TableHead>
+                  <TableHead className="text-right">Fresh</TableHead>
+                  <TableHead className="text-right">EOSS</TableHead>
+                  <TableHead>Also</TableHead>
+                  <TableHead className="w-20" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.brands.map((b) => {
+                  const t = termsFor(today(), calcSettings(g, b));
+                  const later = b.termChanges.filter((c) => c.from > today()).length;
+                  return (
+                    <TableRow key={b.id}>
+                      <TableCell className="text-foreground">{b.name}</TableCell>
+                      <TableCell className="text-right tabular-nums">{+(t.freshMargin * 100).toFixed(2)}%</TableCell>
+                      <TableCell className="text-right tabular-nums">{+(t.discMargin * 100).toFixed(2)}%</TableCell>
+                      <TableCell className="text-xs text-foreground-lighter">
+                        {[t.marginSlabs.length && `${t.marginSlabs.length} discount slabs`, t.from && `terms from ${fmtDate(t.from)}`, later && `${later} change${later > 1 ? "s" : ""} ahead`].filter(Boolean).join(" · ") || "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="default" size="tiny" icon={<Pencil size={12} strokeWidth={1.5} />} onClick={() => setTermsOf(b)}>Edit</Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          ) : (
+            <CardContent className="py-6 text-sm text-foreground-lighter">No brands yet — add them on the Brands screen.</CardContent>
+          )}
+        </Card>
+        <BrandSheet open={!!termsOf} onOpenChange={(o) => !o && setTermsOf(null)} brand={termsOf} startTab="terms" />
       </Section>
 
       <Section title="Default deal" description="Filled in for new brands. Each brand can have its own.">

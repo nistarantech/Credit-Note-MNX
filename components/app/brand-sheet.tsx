@@ -18,18 +18,18 @@ import { DISCOUNT_PRESETS, MARGIN_PRESETS, PercentPicker } from "./margin-select
 
 /** Add or edit a brand: details, the terms its credit claims use, and dispatch. */
 export function BrandSheet({
-  open, onOpenChange, brand,
-}: { open: boolean; onOpenChange: (o: boolean) => void; brand: Brand | null }) {
+  open, onOpenChange, brand, startTab = "details",
+}: { open: boolean; onOpenChange: (o: boolean) => void; brand: Brand | null; startTab?: "details" | "terms" | "dispatch" }) {
   const { data, saveBrand, selectBrand } = useStore();
   const [p, setP] = useState<Brand>(() => brand ?? newBrand(data.globals));
-  const [tab, setTab] = useState("details");
+  const [tab, setTab] = useState<string>(startTab);
   const [period, setPeriod] = useState("start"); // terms period being edited
   const [seen, setSeen] = useState({ open, brand });
   if (seen.open !== open || seen.brand !== brand) {
     setSeen({ open, brand });
     if (open) {
       setP(brand ?? newBrand(data.globals));
-      setTab("details");
+      setTab(startTab);
       setPeriod("start");
     }
   }
