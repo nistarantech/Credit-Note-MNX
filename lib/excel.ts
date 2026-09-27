@@ -7,18 +7,18 @@ import type { Purchase } from "./store";
 export type Cell = string | number | boolean | Date | null | undefined;
 export type Kind = "sales" | "purchases";
 
-type SaleField = "date" | "billNo" | "barcode" | "division" | "department" | "ageing" | "discM" | "discP" | "disc" | "type" | "mrp" | "qty" | "wsp" | "gstB2B" | "flatDisc" | "cashback";
+type SaleField = "date" | "billNo" | "barcode" | "division" | "department" | "ageing" | "discM" | "discP" | "disc" | "type" | "mrp" | "qty" | "wsp" | "gstB2B" | "flatDisc" | "cashback" | "saleAmt";
 type BuyField = "date" | "invoiceNo" | "barcode" | "division" | "department" | "category" | "season" | "rate" | "mrp" | "qty" | "gross" | "tax" | "net";
 
 const key = (h: Cell) => String(h ?? "").toLowerCase().replace(/[^a-z0-9%()-]/g, "");
 
 // Header text (normalised) → field. First match per field wins.
 const SALE_HEADERS: [RegExp, SaleField][] = [
-  [/^billdate|^date$|^saledate/, "date"],
-  [/^billno|^bill$|^invoiceno/, "billNo"],
+  [/^billdate|^date$|^saledate|^voucherdate/, "date"],
+  [/^billno|^bill$|^invoiceno|^voucherno|^voucherwithprefix|^voucher$/, "billNo"],
   [/barcode|article/, "barcode"],
   [/^division/, "division"],
-  [/^department/, "department"],
+  [/^department|^itemname$|^productname$/, "department"],
   [/^ageing|^season/, "ageing"],
   [/^disc%\(m\)/, "discM"],
   [/^disc%\(p\)/, "discP"],
@@ -29,8 +29,10 @@ const SALE_HEADERS: [RegExp, SaleField][] = [
   [/^wsp$/, "wsp"],
   [/^gst\(b-b\)$/, "gstB2B"],
   // ₹ amounts. Not "Disc (P)" / "Disc (M)" — those are the % discount worked out in rupees.
-  [/^flatdisc|^flatdiscount|^discamt$|^discountamount$|^discount\(rs|^extradisc/, "flatDisc"],
+  [/^flatdisc|^flatdiscount|^discamt$|^discountamount$|^discount\(rs|^extradisc|^totaldisc/, "flatDisc"],
   [/^cashback/, "cashback"],
+  // what the customer paid for the line, in POS sale reports (Sale amt / Net Amt / amt)
+  [/^saleamt|^saleamount|^saleval|^netamt$|^netamount$|^amt$|^amount$/, "saleAmt"],
 ];
 
 const BUY_HEADERS: [RegExp, BuyField][] = [
@@ -39,8 +41,8 @@ const BUY_HEADERS: [RegExp, BuyField][] = [
   [/^barcode$/, "barcode"],
   [/^division$/, "division"],
   [/^department$/, "department"],
-  [/^category3$/, "category"],
-  [/^category6$/, "season"],
+  [/^category3$|^category$/, "category"],
+  [/^category6$|^season$/, "season"],
   [/^invoicerate$/, "rate"],
   [/^rsp$|^mrp$/, "mrp"],
   [/^invoiceqty$/, "qty"],
@@ -109,16 +111,21 @@ function salesFrom(sheet: string, rows: Cell[][], h: number, map: Map<SaleField,
   const sales: Line[] = [];
   let skipped = 0;
   for (const r of rows.slice(h + 1)) {
-    const mrp = num(get(r, "mrp"));
     const qty = num(get(r, "qty"));
+    // POS reports put a return as −1 qty at −MRP: keep the MRP per piece positive.
+    const mrpIn = num(get(r, "mrp"));
+    const mrp = mrpIn < 0 && qty < 0 ? mrpIn / qty : mrpIn;
     const d = date(get(r, "date"));
     if (!(mrp > 0) || isNaN(qty) || qty === 0 || !d) {
       if (r.some((c) => c !== null && c !== undefined && c !== "")) skipped++;
       continue;
     }
     const discRaw = [get(r, "discM"), get(r, "discP"), get(r, "disc")].map(pct).find((x) => !isNaN(x));
+    // No discount % column but the amount paid is there: the discount is what was knocked off the MRP.
+    const paid = num(get(r, "saleAmt"));
+    const fromPaid = discRaw === undefined && !isNaN(paid) ? Math.min(1, Math.max(0, 1 - Math.abs(paid) / (mrp * Math.abs(qty)))) : undefined;
     const typeCell = str(get(r, "type"));
-    const disc = discRaw ?? 0;
+    const disc = +(discRaw ?? fromPaid ?? 0).toFixed(6);
     // no Slab column: a real markdown is EOSS, a small one (e.g. 6.25%) is a fresh-sale scheme
     const type: Line["type"] = /fresh/i.test(typeCell) ? "FRESH" : /disc|eoss/i.test(typeCell) ? "DISC" : disc > 0.2 ? "DISC" : "FRESH";
 
@@ -136,7 +143,7 @@ function salesFrom(sheet: string, rows: Cell[][], h: number, map: Map<SaleField,
       id: uid(), date: d, billNo: str(get(r, "billNo")), barcode: str(get(r, "barcode")),
       division: str(get(r, "division")), department: str(get(r, "department")), ageing: str(get(r, "ageing")),
       type, disc, mrp, qty, wsp, gstB2B,
-      flatDisc: flat > 0 ? flat : null,
+      flatDisc: flat > 0 && fromPaid === undefined ? flat : null, // already inside the % worked out from the amount paid
       cashback: cash > 0 ? cash : null,
     });
   }
